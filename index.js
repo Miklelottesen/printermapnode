@@ -1,4 +1,4 @@
-var express   =    require("express");
+//var express   =    require("express");
 var mysql     =    require('mysql');
 //var app       =    express();
 var server    =    require('http').createServer(onRequest);
