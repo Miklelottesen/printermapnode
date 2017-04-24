@@ -9,7 +9,7 @@ var clients = [];
 var io = require("socket.io")(server);
 
 app.use("/", express.static(__dirname + "/http"));
-app.listen(3000, function(){
+app.listen(process.env.PORT || 8080, function(){
 	console.log("Listening");
 });
 
@@ -112,7 +112,7 @@ function handle_database_multi(ses, queries, zoom) {
         			}
         			if(i+1 == queries.length){
         				clients[ses].emit("mergeFakeClusters","");
-        			}
+        process.env.PORT || 8080			}
         		}
         		else {
         			clients[ses].emit("serverError",{
