@@ -46,17 +46,17 @@
         var urlPrefix = nodeUrl.split("://")[0]+"://";
         nodeUrl = nodeUrl.split("://")[1];
         if(nodeUrl.split(":").length > 1){
-            nodeUrl = nodeUrl.split(":")[0] + "";
+            nodeUrl = nodeUrl.split(":")[0] + ":8080";
         }
-        else if (nodeUrl.split("/").length > 0){
+        else if (nodeUrl.split("/").length > 1){
             var newUrl = "";
             for(i = 0; i < nodeUrl.split("/").length; i++){
                 newUrl += nodeUrl.split("/")[i];
-                if(i+2 < nodeUrl.split("/").length){
+                if(i+1 != nodeUrl.split("/").length){
                     newUrl += "/";
                 }
             }
-            nodeUrl = newUrl+"";
+            nodeUrl = newUrl;
         }
         nodeUrl = urlPrefix+nodeUrl;
         console.log(nodeUrl);
@@ -390,7 +390,7 @@
                 }*/
             }
         }
-
+        if(typeof rows != "undefined")
         for(i = 0; i < rows.length; i++){
             for(n = i+1; n < rows.length; n++){
                 var latOne = rows[i]["lat"];
@@ -419,6 +419,7 @@
             }
         }
         // Push non-empty markers to array, also remove markers with low count
+        if(typeof rows != "undefined")
         for(i = 0; i < rows.length; i++){
             if(rows[i]["lat"] != null && rows[i]["count"] > 4){
                 retRows.push(rows[i]);
