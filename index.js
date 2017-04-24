@@ -31,7 +31,7 @@ res.writeHead(200, {
 
 var pool      =    mysql.createPool({
     connectionLimit : 100, //important
-    host     : '35.187.104.229:3306',
+    host     : '35.187.104.229',
     user     : 'visitor',
     password : 'VisitMe1234',
     database : 'PrinterMap',
