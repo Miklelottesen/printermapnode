@@ -1,12 +1,12 @@
-//var express   =    require("express");
+var express   =    require("express");
 var mysql     =    require('mysql');
-//var app       =    express();
+var app       =    express();
 //var server    =    require('http').Server(app);
-var io        =    require('socket.io')(8080);
+var io        =    require('socket.io')(1337);
 //var fs        =    require('fs');
 var clients = [];
 
-//server.listen(1337);
+server.listen(8080);
 
 var pool      =    mysql.createPool({
     connectionLimit : 100, //important
@@ -296,6 +296,9 @@ app.get("/test",function(req,res){
 	test_function(req,res,msg);
 })
 */
+app.get("/", function (req, res){
+	consoel.log("Connected");
+});
 io.on('connection', function (socket) {
 	console.info("New client connected (id=" + socket.id + ").");
 	clients.push(socket);
