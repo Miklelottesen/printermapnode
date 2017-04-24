@@ -304,9 +304,6 @@ app.get("/test",function(req,res){
 	test_function(req,res,msg);
 })
 */
-app.get("/", function (req, res){
-	consoel.log("Connected");
-});
 io.on('connection', function (socket) {
 	console.info("New client connected (id=" + socket.id + ").");
 	clients.push(socket);
