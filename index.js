@@ -1,12 +1,17 @@
-//var express   =    require("express");
+var express   =    require("express");
 var mysql     =    require('mysql');
-//var app       =    express();
+var app       =    express();
 var server    =    require('http').createServer(onRequest);
 //var io        =    require('socket.io')(1337);
 //var fs        =    require('fs');
 var clients = [];
 
 var io = require("socket.io")(server);
+
+app.use("/", express.static(__dirname + "/http"));
+app.listen(3000, function(){
+	console.log("Listening");
+});
 
 function onRequest(req,res){
 res.writeHead(200, {

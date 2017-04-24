@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+       * {
+       	padding:0;
+       	margin:0;
+       }
+       #map {
+        height: 100vh;
+        width: 100vw;
+       }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.7.3/socket.io.js"></script>
+    <script>
+    var userPosition = [];
+    var userIp;
+    var map;
+    var currentBounds;
+    var isFirstRun = true;
+    var detectionLimit = 0; // How much of the view has to be moved in order to update markers
+    var offlineMarkers = [];
+    var fakeClusterMarkers = [];
+    var markerCluster;
+    var nodeUrl = "http://localhost:8080";
+    //var nodeUrl = "https://find-printers-map.appspot.com";
+    //var nodeUrl = "https://fpserver.herokuapp.com";
+    var epCount = "/count";
+    var epGet = "/get";
+    var epClusters = "/clusters";
+    var socket;
+    var lastCount;
+    var countLimit = 2000;
+    var clusterGridSize = 2;
+    var sessionId;
+    var markerClicks = 0;
+    var clickedLat;
+    var clickedLng;
+
+    function initMap() {
+        // Get user's location based on IP lookup
+        $.getJSON("https://geoip-db.com/json/geoip.php?jsonp=?")
+            .done(function(location) {
+                // Start socket.io connection
+                var options = {forceNew :true,
+                               reconnection :false,
+                               timeout:10000,
+                               "flash policy port":8080,
+                               autoConnect:true,
+                               "path":"/node_modules/socket.io",
+                               "transports":["polling"]}
+                socket = io.connect(nodeUrl);
+                  socket.on('connect', function () {
+                    //socket.emit('message');
+
+                    socket.on("SessionID", function (ses, id){
+                        console.log(ses+" - "+id);
+                        sessionId = ses;
+                    });
+
+                    socket.on('message', function (msg) {
+                      console.log(msg);
+                    });
+
+                    socket.on("countLibraries", function(rows){
+                        onCountLibraries(rows);
+                    });
+                    socket.on("getLibraries",function(rows){
+                        onGetLibraries(rows);
+                    });
+                    socket.on("getCluster", function(rows){
+                        onGetClusterMarker(rows);
+                    });
+                    socket.on("removeMarkers", function(){
+                        removeAllMarkers();
+                    })
+                    socket.on("mergeFakeClusters", function(empty){
+                        console.log("Duh");
+                        filterRows();
+                    });
+                    socket.on("serverError", function (err){
+                        console.log("Error: "+err.code+"\nStatus: "+err.status);
+                    })
+                  });
+
+                userPosition = [location.latitude, location.longitude];
+                var userPos = {
+                    lat: userPosition[0],
+                    lng: userPosition[1]
+                };
+                userIp = location.IPv4;
+                map = new google.maps.Map(document.getElementById("map"), {
+                    zoom: 5,
+                    center: userPos
+                });
+                map.addListener("bounds_changed", function() {
+                    boundsChanged();
+                });
+                map.addListener("zoom_changed", function() {
+                    isFirstRun = true;
+                    console.log("Zoom: " + map.getZoom());
+                    boundsChanged();
+                });
+                // Attempt to get user's physical position
+                // TODO: implement!
+                /*var marker = new google.maps.Marker({
+                    position: userPos,
+                    map: map
+                });   */
+            });
+    }
+
+    function onCountLibraries(rows){
+        lastCount = rows[0]["count"];
+        if(lastCount < countLimit){
+            // Sufficiently few, get markers
+            socket.emit("getLibraries",sessionId,constructNodeBoundsObject());
+        } else {
+            // Too many printers, get clusters
+            removeAllMarkers();
+            socket.emit("getClusters",sessionId,constructNodeBoundsObjectGridsize(),map.getZoom());
+        }
+    }
+
+    function onGetLibraries(rows){
+        removeAllMarkers();
+        for(i = 0; i < rows.length; i++){
+            var lName = rows[i]["name"];
+            var lLat = rows[i]["lat"];
+            var lLng = rows[i]["lng"];
+            var lPos = {lat: lLat, lng: lLng};
+            constructMarker(lPos,lName);
+        }
+        reloadClustering();
+    }
+
+    function onGetClusterMarker(rows){
+        //removeAllMarkers();
+        for(i = 0; i < rows.length; i++){
+            var lLat = rows[i]["lat"];
+            var lLng = rows[i]["lng"];
+            var lCount = rows[i]["count"];
+            var lPos = {lat: lLat, lng: lLng};
+            constructFakeClusterMarker(lPos,lCount);
+        }
+    }
+
+    function boundsChanged() {
+        detectionLimit = 0.3;
+        var bounds = map.getBounds();
+        var newBounds = constructBoundsObject(bounds);
+        if (isFirstRun) {
+            currentBounds = newBounds;
+            isFirstRun = false;
+            getPrinterCount();
+        }
+        var bLimitLat = (newBounds.sw.lat - newBounds.ne.lat) * detectionLimit;
+        var bLimitLng = (newBounds.ne.lng - newBounds.sw.lng) * detectionLimit;
+        bLimitLat = (bLimitLat < 0) ? bLimitLat * -1 : bLimitLat;
+        bLimitLng = (bLimitLng < 0) ? bLimitLng * -1 : bLimitLng;
+
+        // Check if the difference between old bounds and new bounds is too big
+        var cB = currentBounds.ne;
+        var nB = newBounds.ne;
+        if ((cB.lat - nB.lat <= (bLimitLat * -1) || cB.lat - nB.lat >= bLimitLat) || (cB.lng - nB.lng <= (bLimitLng * -1) || cB.lng - nB.lng >= bLimitLng)) {
+            // Bounds changed sufficiently
+            socket.emit("stopEverything", sessionId);
+            currentBounds = newBounds;
+            // Get printerCount
+            getPrinterCount();
+        }
+        detectionLimit = 0;
+    }
+
+    function constructBoundsObject(bounds) {
+        var boundsArr = [bounds.getNorthEast(), bounds.getSouthWest()];
+        return {
+            ne: {
+                lat: boundsArr[0].lat(),
+                lng: boundsArr[0].lng()
+            },
+            sw: {
+                lat: boundsArr[1].lat(),
+                lng: boundsArr[1].lng()
+            }
+        };
+    }
+
+    function constructAjaxUrl(file){
+    	var cbnla = currentBounds.ne.lat - ((currentBounds.sw.lat-currentBounds.ne.lat)+detectionLimit);
+    	var cbnln = currentBounds.ne.lng + ((currentBounds.ne.lng-currentBounds.sw.lng)+detectionLimit);
+    	var cbsla = currentBounds.sw.lat + ((currentBounds.sw.lat-currentBounds.ne.lat)+detectionLimit);
+    	var cbsln = currentBounds.sw.lng - ((currentBounds.ne.lng-currentBounds.sw.lng)+detectionLimit);
+    	var url = "/ajax/"+file+"?";
+    	url += "lata=" + cbnla;
+    	url += "&lnga=" + cbnln;
+    	url += "&latb=" + cbsla;
+    	url += "&lngb=" + cbsln;
+    	return url;
+    }
+
+    function constructNodeBoundsObject(){
+        return {
+            latA : currentBounds.ne.lat,
+            latB : currentBounds.sw.lat,
+            lngA : currentBounds.ne.lng,
+            lngB : currentBounds.sw.lng
+        };
+    }
+
+    function constructNodeBoundsObjectGridsize(){
+        return {
+            latA : currentBounds.ne.lat,
+            latB : currentBounds.sw.lat,
+            lngA : currentBounds.ne.lng,
+            lngB : currentBounds.sw.lng,
+            gridsize : clusterGridSize
+        };
+    }
+
+    function getPrinterCount() {
+        socket.emit("getCount",sessionId, constructNodeBoundsObject());
+        //var url = constructAjaxUrl("countPrinters.php");
+        //console.log(url);
+        /*$.ajax({
+            url: url
+        }).done(function(data) {
+            if(parseInt(data) > 7200){
+            	console.log(data+" - Too many printers!");
+                getPrinterCountMarkers();
+            } else {
+            	console.log(data+" - Sufficiently few printers...");
+            	getPrinterMarkers();
+            }
+        });*/
+    }
+
+    function getPrinterMarkers(){
+    	url = constructAjaxUrl("getPrinters.php");
+    	console.log(url);
+    	$.ajax({
+    		url:url
+    	}).done(function(data){
+    		//console.log(JSON.parse(data));
+    		if(data != ""){
+	    		var printerLocations = JSON.parse(data);
+	    		removeAllMarkers();
+	    		for(i=0; i< printerLocations.length; i++){
+	    			var mPos = {
+	    				lat: parseFloat(printerLocations[i][1]),
+	    				lng: parseFloat(printerLocations[i][2])
+	    			}
+	    			var pName = printerLocations[i][0];
+	    			constructMarker(mPos,pName);
+	    		}
+	    		reloadClustering();
+	    	}
+    	});
+    }
+
+    function getPrinterCountMarkers(){
+        url = constructAjaxUrl("getPrinterClusters.php");
+        url += "&zoom="+map.getZoom();
+        console.log(url);
+        $.ajax({
+            url:url
+        }).done(function(data){
+            if(data != ""){
+                console.log(data);
+                var markerLocations = JSON.parse(data);
+                //console.log(markerLocations);
+                removeAllMarkers();
+                //console.log(Object.keys(markerLocations).length);
+                //alert(markerLocations == null);
+                if(markerLocations != null){
+                    for(i=0; i < Object.keys(markerLocations).length; i++){
+                  //      console.log(i);
+                    //    console.log(markerLocations[i]);
+                        thisMarker = markerLocations[i];
+                        if(thisMarker["2"] == 1) 
+                        {
+                            constructMarker({lat:parseFloat(thisMarker[0]),lng:parseFloat(thisMarker[1])},"");
+                        } 
+                        else 
+                        {
+                            constructFakeClusterMarker({lat:parseFloat(thisMarker[0]),lng:parseFloat(thisMarker[1])},thisMarker[2]);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function constructMarker(pos,title){
+        var image = {
+                  url: '/imgs/markerO.png',
+                  // This marker is 20 pixels wide by 32 pixels high.
+                  size: new google.maps.Size(25, 25),
+                  // The origin for this image is (0, 0).
+                  origin: new google.maps.Point(0, 0),
+                  // The anchor for this image is the base of the flagpole at (0, 32).
+                  anchor: new google.maps.Point(12, 13)
+                };
+    	var marker = new google.maps.Marker({
+	        position: pos,
+            icon: image,
+	        title: title,
+	        map: map
+	    });
+	    //marker.setMap(map);
+	    offlineMarkers.push(marker);
+    }
+
+    function constructFakeClusterMarker(pos,count){
+        var iconSize = 45;
+        var fileName = "clusterO.png";
+        if(count > 999){
+            iconSize = 50;
+            fileName = "clusterO50.png";
+        }
+        if(count > 9999){
+            iconSize = 55;
+            fileName = "clusterO55.png";
+        }
+        if(count > 99999){
+            iconSize = 60;
+            fileName = "clusterO60.png";
+        }
+        var halfSize = parseInt(iconSize / 2);
+        var image = {
+                  url: '/imgs/'+fileName,
+                  // This marker is 20 pixels wide by 32 pixels high.
+                  size: new google.maps.Size(iconSize, iconSize),
+                  // The origin for this image is (0, 0).
+                  origin: new google.maps.Point(0, 0),
+                  // The anchor for this image is the base of the flagpole at (0, 32).
+                  anchor: new google.maps.Point(halfSize, halfSize)
+                };
+        var nCount = count.toLocaleString();
+        newmarker = new google.maps.Marker({
+            position: pos,
+            label: {text: count.toLocaleString(), color: "white"},
+            map: map,
+            icon: image
+        });
+        google.maps.event.addDomListener(newmarker, 'click', function() {
+            getMarkerDistance(pos);
+        });
+        fakeClusterMarkers.push(newmarker);
+    }
+
+    function filterRows(){
+        var retRows = [];
+        var z = map.getZoom();
+        if (z == 0) z = 0.1;
+        var mergeDistance = -1.082 * z + 6.414;
+
+        for(i = 0; i < fakeClusterMarkers.length; i++){
+            for(n = i+1; n < fakeClusterMarkers.length; n++){
+                console.log(fakeClusterMarkers[i]);
+                /*var mi = fakeClusterMarkers[i];
+                var mn = fakeClusterMarkers[n];
+                var markerDist = (Math.abs(mi.latLng.lat() - mn.latLng.lat()) + Math.abs(mi.latLng.lng() - mn.latLng.lng())) / 2;
+                if(markerDist < mergeDistance){
+                    // Merge the two markers by deleting them and creating a new
+                    var newLat = (mi.latLng.lat() + mn.latLng.lng()) / 2;
+                    var newLng = (mi.latLng.lat() + mn.latLng.lng()) / 2;
+                }*/
+            }
+        }
+
+        for(i = 0; i < rows.length; i++){
+            for(n = i+1; n < rows.length; n++){
+                var latOne = rows[i]["lat"];
+                var lngOne = rows[i]["lng"];
+                var countOne = rows[i]["count"];
+                var countryOne = rows[i]["country"];
+                var latTwo = rows[n]["lat"];
+                var lngTwo = rows[n]["lng"];
+                var countTwo = rows[n]["count"];
+                var countryTwo = rows[n]["country"];
+
+                var markerDist = (Math.abs(latOne - latTwo) + Math.abs(lngOne - lngTwo)) / 2;
+
+                if(markerDist < mergeDistance){
+                    var newLat = (latOne + latTwo) / 2;
+                    var newLng = (lngOne + lngTwo) / 2;
+                    var newCount = countOne + countTwo;
+                    rows[n]["lat"] = newLat;
+                    rows[n]["lng"] = newLng;
+                    rows[n]["count"] = newCount;
+                    rows[i]["lat"] = null;
+                    rows[i]["lng"] = null;
+                    rows[i]["count"] = null;
+                    n = rows.length;
+                }
+            }
+        }
+        // Push non-empty markers to array, also remove markers with low count
+        for(i = 0; i < rows.length; i++){
+            if(rows[i]["lat"] != null && rows[i]["count"] > 4){
+                retRows.push(rows[i]);
+            }
+        }
+        return retRows;
+    }
+
+    function getMarkerDistance(pos){
+        if(markerClicks == 0){
+            markerClicks = 1;
+            clickedLat = pos.lat;
+            clickedLng = pos.lng;
+            console.log("Now, click another marker...");
+        }
+        else {
+            var latDist = Math.abs(clickedLat - pos.lat);
+            var lngDist = Math.abs(clickedLng - pos.lng);
+            var avgDist = (latDist + lngDist) / 2;
+            markerClicks = 0;
+            console.log("Zoom: "+map.getZoom()+"\nDistance: "+avgDist);
+        }
+    }
+
+    function removeAllMarkers(){
+        /*if(typeof markerCluster != 'undefined'){
+            for(i=0; i < markerCluster.length; i++){
+                markerCluster[i].setMap(null);
+            }
+        }*/
+    	for(i=0; i < offlineMarkers.length; i++){
+    		offlineMarkers[i].setMap(null);
+    	}
+        for(i=0; i < fakeClusterMarkers.length; i++){
+            fakeClusterMarkers[i].setMap(null);
+        }
+        if(typeof markerCluster != 'undefined')
+            markerCluster.clearMarkers();
+        offlineMarkers = [];
+        fakeClusterMarkers = [];
+    }
+
+    function reloadClustering(){
+        var clusterStyles = [
+          {
+            textColor: 'white',
+            url: 'imgs/clusterer/m1.png',
+            height: 45,
+            width: 45
+          }
+        ];
+    	markerCluster = new MarkerClusterer(map, offlineMarkers,{
+    		styles: clusterStyles,
+    		gridSize: 150,
+    		maxZoom: 15
+    	});
+    }
+    </script>
+    <script src="markerclustering.js">
+    </script>
+    <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD1F1Olznz9guWfWAYv1lr4pUIr5ij83FE&callback=initMap">
+    </script>
+  </body>
+</html>
