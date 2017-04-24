@@ -52,11 +52,11 @@
             var newUrl = "";
             for(i = 0; i < nodeUrl.split("/").length; i++){
                 newUrl += nodeUrl.split("/")[i];
-                if(i+1 != nodeUrl.split("/").length){
+                if(i+1 < nodeUrl.split("/").length){
                     newUrl += "/";
                 }
             }
-            nodeUrl = newUrl+"1337";
+            nodeUrl = newUrl+":1337";
         }
         nodeUrl = urlPrefix+nodeUrl;
         console.log(nodeUrl);
