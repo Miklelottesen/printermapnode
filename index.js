@@ -112,7 +112,7 @@ function handle_database_multi(ses, queries, zoom) {
         			}
         			if(i+1 == queries.length){
         				clients[ses].emit("mergeFakeClusters","");
-        process.env.PORT || 8080			}
+        			}
         		}
         		else {
         			clients[ses].emit("serverError",{
@@ -347,8 +347,8 @@ io.on('connection', function (socket) {
   });
 });
 
-var po = (process.env.PORT || 8080);
-server.listen(process.env.PORT || 8080, function(){
+var po = 1337;
+server.listen(1337, function(){
 console.log("Listening to port "+po);
 });
 

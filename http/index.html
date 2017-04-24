@@ -26,7 +26,7 @@
     var offlineMarkers = [];
     var fakeClusterMarkers = [];
     var markerCluster;
-    var nodeUrl = "http://localhost:8080";
+    var nodeUrl = "http://localhost:1337";
     //var nodeUrl = "https://find-printers-map.appspot.com";
     //var nodeUrl = "https://fpserver.herokuapp.com";
     var epCount = "/count";
@@ -42,6 +42,24 @@
     var clickedLng;
 
     function initMap() {
+        nodeUrl = window.location.href;
+        var urlPrefix = nodeUrl.split("://")[0]+"://";
+        nodeUrl = nodeUrl.split("://")[1];
+        if(nodeUrl.split(":").length > 1){
+            nodeUrl = nodeUrl.split(":")[0] + ":1337";
+        }
+        else if (nodeUrl.split("/").length > 1){
+            var newUrl = "";
+            for(i = 0; i < nodeUrl.split("/").length; i++){
+                newUrl += nodeUrl.split("/")[i];
+                if(i+1 != nodeUrl.split("/").length){
+                    newUrl += "/";
+                }
+            }
+            nodeUrl = newUrl;
+        }
+        nodeUrl = urlPrefix+nodeUrl;
+        console.log(nodeUrl);
         // Get user's location based on IP lookup
         $.getJSON("https://geoip-db.com/json/geoip.php?jsonp=?")
             .done(function(location) {
