@@ -32,7 +32,13 @@ function handle_database(ses, sql,tag) {
     
     pool.getConnection(function(err,connection){
         if (err) {
-          clients[ses].emit("serverError",{
+	  var conn;
+	  if(typeof clients[ses] == "undefined"){
+	    conn = io;
+	  } else {
+	    conn = clients[ses];
+	  }
+          conn.emit("serverError",{
           	code : 100,
           	status : "Error in connection to database",
           	tags: ["db","connection"]
