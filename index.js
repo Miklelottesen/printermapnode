@@ -1,12 +1,17 @@
 var express   =    require("express");
 var mysql     =    require('mysql');
-var app       =    express();
+//var app       =    express();
 //var server    =    require('http').Server(app);
-var io        =    require('socket.io')(1337);
+//var io        =    require('socket.io')(1337);
 //var fs        =    require('fs');
 var clients = [];
 
-server.listen(443);
+const server = express()
+  .use((req, res) => res.sendFile(INDEX) )
+  .listen(PORT, () => console.log(`Listening on ${ PORT }`));
+const io = socketIO(server);
+
+//server.listen(443);
 
 var pool      =    mysql.createPool({
     connectionLimit : 100, //important
