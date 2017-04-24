@@ -46,7 +46,7 @@
         var urlPrefix = nodeUrl.split("://")[0]+"://";
         nodeUrl = nodeUrl.split("://")[1];
         if(nodeUrl.split(":").length > 1){
-            nodeUrl = nodeUrl.split(":")[0] + ":8080";
+            nodeUrl = nodeUrl.split(":")[0] + "";
         }
         else if (nodeUrl.split("/").length > 0){
             var newUrl = "";
@@ -56,7 +56,7 @@
                     newUrl += "/";
                 }
             }
-            nodeUrl = newUrl+":8080";
+            nodeUrl = newUrl+"";
         }
         nodeUrl = urlPrefix+nodeUrl;
         console.log(nodeUrl);
