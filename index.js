@@ -339,7 +339,7 @@ io.on('connection', function (socket) {
 var po = (process.env.PORT || 8080);
 server.listen(process.env.PORT || 8080, function(){
 console.log("Listening to port "+po);
-});`
+});
 
 function correctBounds(bounds){
 	var retBounds = {};
