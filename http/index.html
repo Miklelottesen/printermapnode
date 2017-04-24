@@ -52,7 +52,7 @@
             var newUrl = "";
             for(i = 0; i < nodeUrl.split("/").length; i++){
                 newUrl += nodeUrl.split("/")[i];
-                if(i < nodeUrl.split("/").length){
+                if(i+2 < nodeUrl.split("/").length){
                     newUrl += "/";
                 }
             }
