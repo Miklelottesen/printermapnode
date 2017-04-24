@@ -336,8 +336,8 @@ io.on('connection', function (socket) {
   });
 });
 
-server.listen(3002, function(){
-console.log("Listening to port 3002.");
+server.listen(8080, function(){
+console.log("Listening to port 8080.");
 });`
 
 function correctBounds(bounds){
