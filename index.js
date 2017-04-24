@@ -6,7 +6,7 @@ var io        =    require('socket.io')(1337);
 //var fs        =    require('fs');
 var clients = [];
 
-server.listen(8080);
+server.listen(443);
 
 var pool      =    mysql.createPool({
     connectionLimit : 100, //important
