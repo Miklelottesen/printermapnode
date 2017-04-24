@@ -1,17 +1,25 @@
-var express   =    require("express");
+const express   =    require("express");
 var mysql     =    require('mysql');
-var app       =    express();
-var server    =    require('http').createServer(onRequest);
+const path = require('path');
+//var app       =    express();
+//var server    =    require('http').createServer(onRequest);
 //var io        =    require('socket.io')(1337);
 //var fs        =    require('fs');
 var clients = [];
 
-var io = require("socket.io")(server);
+const PORT = process.env.PORT || 8080;
+const INDEX = path.join(__dirname, 'http/index.html');
 
-app.use("/", express.static(__dirname + "/http"));
+const server = express()
+	.use("/", express.static(__dirname + "/http"))
+	.listen(PORT, () => console.log('Listening on ${ PORT }'));
+
+const io = require("socket.io")(server);
+
+/*app.use("/", express.static(__dirname + "/http"));
 app.listen(process.env.PORT || 8080, function(){
 	console.log("Listening");
-});
+});*/
 
 function onRequest(req,res){
 res.writeHead(200, {
@@ -347,10 +355,10 @@ io.on('connection', function (socket) {
   });
 });
 
-var po = 1337;
+/*var po = 1337;
 server.listen(1337, function(){
 console.log("Listening to port "+po);
-});
+});*/
 
 function correctBounds(bounds){
 	var retBounds = {};
