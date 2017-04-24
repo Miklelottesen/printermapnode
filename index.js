@@ -1,15 +1,18 @@
 var express   =    require("express");
 var mysql     =    require('mysql');
 //var app       =    express();
-//var server    =    require('http').Server(app);
+var server    =    require('http').createServer(onRequest);
 //var io        =    require('socket.io')(1337);
 //var fs        =    require('fs');
 var clients = [];
 
-const server = express()
-  .use((req, res) => res.sendFile(INDEX) )
-  .listen(PORT, () => console.log(`Listening on ${ PORT }`));
-const io = socketIO(server);
+var io = require("socket.io")(server);
+
+function onRequest(req,res){
+res.writeHead(200, {
+'Access-Control-Allow-Origin' : '*'
+});
+};
 
 //server.listen(443);
 
@@ -335,6 +338,10 @@ io.on('connection', function (socket) {
   	}
   });
 });
+
+server.listen(3002, function(){
+console.log("Listening to port 3002.");
+});`
 
 function correctBounds(bounds){
 	var retBounds = {};
