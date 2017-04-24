@@ -2,7 +2,7 @@
 var mysql     =    require('mysql');
 //var app       =    express();
 //var server    =    require('http').Server(app);
-var io        =    require('socket.io')(443);
+var io        =    require('socket.io')(8080);
 //var fs        =    require('fs');
 var clients = [];
 
