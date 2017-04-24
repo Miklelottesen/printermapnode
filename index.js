@@ -336,8 +336,9 @@ io.on('connection', function (socket) {
   });
 });
 
-server.listen(8080, function(){
-console.log("Listening to port 8080.");
+var po = (process.env.PORT || 8080);
+server.listen(process.env.PORT || 8080, function(){
+console.log("Listening to port "+po);
 });`
 
 function correctBounds(bounds){
