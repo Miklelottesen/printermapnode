@@ -45,17 +45,13 @@ function handle_database(ses, sql,tag) {
     
     pool.getConnection(function(err,connection){
         if (err) {
-	  var conn;
-	  if(typeof clients[ses] == "undefined"){
-	    conn = io;
-	  } else {
-	    conn = clients[ses];
-	  }
-          conn.emit("serverError",{
-          	code : 100,
-          	status : "Error in connection to database",
-          	tags: ["db","connection"]
-          });
+		if(typeof clients[ses] != 'undefined'){
+		  clients[ses].emit("serverError",{
+			code : 100,
+			status : "Error in connection to database",
+			tags: ["db","connection"]
+		  });
+		}
           return;
         }   
 
@@ -64,24 +60,30 @@ function handle_database(ses, sql,tag) {
         connection.query(sql,function(err,rows){
             connection.release();
             if(!err) {
-                clients[parseInt(ses)].emit(tag,rows);
-                console.log("Emitting to "+clients[ses].id);
+		    if(typeof clients[ses] != 'undefined'){
+			clients[parseInt(ses)].emit(tag,rows);
+			console.log("Emitting to "+clients[ses].id);
+		    }
             }
             else {
-            	clients[ses].emit("serverError",{
-            		code : 400,
-            		status : "Error performing query",
-            		tags: ["db","query"]
-            	});
+		    if(typeof clients[ses] != 'undefined'){
+			clients[ses].emit("serverError",{
+				code : 400,
+				status : "Error performing query",
+				tags: ["db","query"]
+			});
+		    }
             }           
         });
 
-        connection.on('error', function(err) {      
-              clients[ses].emit("serverError",{
-              	code : 100,
-              	status : "Error in connection to database",
-              	tags: ["db","connection"]
-              });
+        connection.on('error', function(err) {  
+		if(typeof clients[ses] != 'undefined'){
+		      clients[ses].emit("serverError",{
+			code : 100,
+			status : "Error in connection to database",
+			tags: ["db","connection"]
+		      });
+		}
               return;     
         });
   });
@@ -91,11 +93,13 @@ function handle_database_multi(ses, queries, zoom) {
     
     pool.getConnection(function(err,connection){
         if (err) {
-          clients[ses].emit("serverError",{
-          	code : 100,
-          	status : "Error in connection to database",
-          	tags: ["db","connection"]
-          });
+		if(typeof clients[ses] != 'undefined'){
+			  clients[ses].emit("serverError",{
+				code : 100,
+				status : "Error in connection to database",
+				tags: ["db","connection"]
+			  });
+		}
           return;
         }   
 
@@ -106,28 +110,32 @@ function handle_database_multi(ses, queries, zoom) {
         for(i = 0; i < queries.length; i++){
         	connection.query(queries[i],function(err,rows){
         		if(!err){
-        			if(i == 0){
-        				clients[ses].emit("removeMarkers");
-        			}
-        			if(!clients[ses].canQuery){
-        				i = queries.length;
-        				clients[ses].canQuery = true;
-        				//return;
-        			}
-        			else {
-        				var filteredRows = filterRows(rows, zoom);
-        				clients[ses].emit("getCluster",filteredRows);
-        			}
-        			if(i+1 == queries.length){
-        				clients[ses].emit("mergeFakeClusters","");
-        			}
+				if(typeof clients[ses] != 'undefined'){
+					if(i == 0){
+						clients[ses].emit("removeMarkers");
+					}
+					if(!clients[ses].canQuery){
+						i = queries.length;
+						clients[ses].canQuery = true;
+						//return;
+					}
+					else {
+						var filteredRows = filterRows(rows, zoom);
+						clients[ses].emit("getCluster",filteredRows);
+					}
+					if(i+1 == queries.length){
+						clients[ses].emit("mergeFakeClusters","");
+					}
+				}
         		}
         		else {
-        			clients[ses].emit("serverError",{
-        				code : 400,
-        				status : "Error performing query",
-        				tags: ["db","query"]
-        			});
+				if(typeof clients[ses] != 'undefined'){
+					clients[ses].emit("serverError",{
+						code : 400,
+						status : "Error performing query",
+						tags: ["db","query"]
+					});
+				}
         		}
         	});
         }
@@ -146,11 +154,13 @@ function handle_database_multi(ses, queries, zoom) {
         });
 */
         connection.on('error', function(err) {      
-              clients[ses].emit("serverError",{
-              	code : 100,
-              	status : "Error in connection to database",
-              	tags: ["db","connection"]
-              });
+		if(typeof clients[ses] != 'undefined'){
+		      clients[ses].emit("serverError",{
+			code : 100,
+			status : "Error in connection to database",
+			tags: ["db","connection"]
+		      });
+		}
               return;     
         });
   });
@@ -343,8 +353,10 @@ io.on('connection', function (socket) {
   	getClusters(ses, b, zoom);
   });
   socket.on('stopEverything', function (ses){
-  	clients[ses].canQuery = false;
-  	clients[ses].emit('removeMarkers');
+	  if(typeof clients[ses] != 'undefined'){
+		clients[ses].canQuery = false;
+		clients[ses].emit('removeMarkers');
+	  }
   });
   socket.on('disconnect', function () { 
   	var index = clients.indexOf(socket);
