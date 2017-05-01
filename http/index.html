@@ -90,8 +90,10 @@
                     socket.on("getLibraries",function(rows){
                         onGetLibraries(rows);
                     });
-                    socket.on("getCluster", function(rows){
+                    socket.on("getCluster", function(rows, isLast){
                         onGetClusterMarker(rows);
+                        console.log(isLast);
+                        if(isLast) console.log("Merge markers");
                     });
                     socket.on("removeMarkers", function(){
                         removeAllMarkers();

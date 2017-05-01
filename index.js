@@ -5,14 +5,14 @@ const path = require('path');
 //var server    =    require('http').createServer(onRequest);
 //var io        =    require('socket.io')(1337);
 //var fs        =    require('fs');
-var clients = [];
+var clients = {};
 
 const PORT = process.env.PORT || 8080;
 const INDEX = path.join(__dirname, 'http/index.html');
 
 const server = express()
 	.use("/", express.static(__dirname + "/http"))
-	.listen(PORT, () => console.log('Listening on ${ PORT }'));
+	.listen(PORT, () => console.log('Server started\nListening on '+PORT));
 
 const io = require("socket.io")(server);
 
@@ -35,7 +35,7 @@ var pool      =    mysql.createPool({
     user     : 'visitor',
     password : 'VisitMe1234',
     database : 'PrinterMap',
-    debug    :  true
+    debug    :  false
 });
 
 var canQuery = true;
@@ -45,28 +45,31 @@ function handle_database(ses, sql,tag) {
     
     pool.getConnection(function(err,connection){
         if (err) {
-		if(typeof clients[ses] != 'undefined'){
-		  clients[ses].emit("serverError",{
-			code : 100,
-			status : "Error in connection to database",
-			tags: ["db","connection"]
-		  });
-		}
-          return;
+        	console.log("Client "+ses+" had an error connecting to database (code 100).");
+			if(typeof clients[ses] != 'undefined'){
+			  clients[ses].emit("serverError",{
+				code : 100,
+				status : "Error in connection to database",
+				tags: ["db","connection"]
+			  });
+			}
+          	return;
         }   
 
-        console.log('connected as id ' + connection.threadId);
+        //console.log('connected as id ' + connection.threadId);
         
         connection.query(sql,function(err,rows){
             connection.release();
             if(!err) {
+            	console.log("Client "+ses+" received "+rows.length+" row(s) from database.");
 		    if(typeof clients[ses] != 'undefined'){
-			clients[parseInt(ses)].emit(tag,rows);
-			console.log("Emitting to "+clients[ses].id);
+			clients[ses].emit(tag,rows);
+			console.log("Emitting row(s) to "+clients[ses].id);
 		    }
             }
             else {
 		    if(typeof clients[ses] != 'undefined'){
+		    	console.log("Client "+ses+" had an error performing a database query (code 400).");
 			clients[ses].emit("serverError",{
 				code : 400,
 				status : "Error performing query",
@@ -78,6 +81,7 @@ function handle_database(ses, sql,tag) {
 
         connection.on('error', function(err) {  
 		if(typeof clients[ses] != 'undefined'){
+			console.log("Client "+ses+" had an error connecting to database (code 100).");
 		      clients[ses].emit("serverError",{
 			code : 100,
 			status : "Error in connection to database",
@@ -94,6 +98,7 @@ function handle_database_multi(ses, queries, zoom) {
     pool.getConnection(function(err,connection){
         if (err) {
 		if(typeof clients[ses] != 'undefined'){
+			console.log("Client "+ses+" had an error connecting to database (code 100).");
 			  clients[ses].emit("serverError",{
 				code : 100,
 				status : "Error in connection to database",
@@ -103,33 +108,40 @@ function handle_database_multi(ses, queries, zoom) {
           return;
         }   
 
-        console.log('connected as id ' + connection.threadId);
+        //console.log('connected as id ' + connection.threadId);
 
         var result = [];
 
+        var finalRows = [];
         for(i = 0; i < queries.length; i++){
         	connection.query(queries[i],function(err,rows){
         		if(!err){
 				if(typeof clients[ses] != 'undefined'){
 					if(i == 0){
 						clients[ses].emit("removeMarkers");
+						console.log("Client "+ses+" was asked to remove all markers.");
 					}
 					if(!clients[ses].canQuery){
+						console.log("Client "+ses+" is unable to query, terminating queries...");
 						i = queries.length;
 						clients[ses].canQuery = true;
 						//return;
 					}
 					else {
+						console.log("Client "+ses+" has received "+rows.length+" rows from database.");
 						var filteredRows = filterRows(rows, zoom);
-						clients[ses].emit("getCluster",filteredRows);
+						var isLast = (i == queries.length) ? true : false;
+						clients[ses].emit("getCluster",filteredRows,isLast);
 					}
 					if(i+1 == queries.length){
+						console.log("Client "+ses+" was asked to merge all clusters.");
 						clients[ses].emit("mergeFakeClusters","");
 					}
 				}
         		}
         		else {
 				if(typeof clients[ses] != 'undefined'){
+					console.log("Client "+ses+" had an error performing database query (code 400).");
 					clients[ses].emit("serverError",{
 						code : 400,
 						status : "Error performing query",
@@ -155,6 +167,7 @@ function handle_database_multi(ses, queries, zoom) {
 */
         connection.on('error', function(err) {      
 		if(typeof clients[ses] != 'undefined'){
+			console.log("Client "+ses+" had an error connecting to database (code 100).");
 		      clients[ses].emit("serverError",{
 			code : 100,
 			status : "Error in connection to database",
@@ -335,9 +348,9 @@ app.get("/test",function(req,res){
 */
 io.on('connection', function (socket) {
 	console.info("New client connected (id=" + socket.id + ").");
-	clients.push(socket);
-	clients[clients.indexOf(socket)].canQuery = true;
-	clients[clients.indexOf(socket)].emit("SessionID", clients.indexOf(socket), socket.id);
+	clients[socket.id] = socket;
+	clients[socket.id].canQuery = true;
+	clients[socket.id].emit("SessionID", socket.id, socket.id);
   
   socket.on('getCount', function (ses, bounds) {
   	var b = correctBounds(bounds);
@@ -359,9 +372,9 @@ io.on('connection', function (socket) {
 	  }
   });
   socket.on('disconnect', function () { 
-  	var index = clients.indexOf(socket);
+  	var index = clients[socket.id];
   	if (index != -1){
-  		clients.splice(index, 1);
+  		delete clients[socket.id];
   		console.info("Client gone (id=" + socket.id + ").");
   	}
   });
