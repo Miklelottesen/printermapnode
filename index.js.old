@@ -268,30 +268,28 @@ io.on('connection', function(socket) {
     console.info("New client connected (id=" + socket.id + ").");
     clients[socket.id] = socket;
     clients[socket.id].canQuery = true;
-    //clients[socket.id].emit("SessionID", socket.id, socket.id);
+    clients[socket.id].emit("SessionID", socket.id, socket.id);
 
-    clients[socket.id].on('getCount', function(bounds) {
+    socket.on('getCount', function(ses, bounds) {
         var b = correctBounds(bounds);
-        getCount(socket.id, b);
+        getCount(ses, b);
     });
-    clients[socket.id].on('getLibraries', function(bounds) {
+    socket.on('getLibraries', function(ses, bounds) {
         var b = correctBounds(bounds);
-        getLibs(socket.id, b);
+        getLibs(ses, b);
     });
-    clients[socket.id].on('getClusters', function(bounds) {
-        //console.log("\n\nOptions: \n"+JSON.stringify(bounds)+"\n"+JSON.stringify(zoom));
+    socket.on('getClusters', function(ses, bounds, zoom) {
         var b = correctBounds(bounds);
         b.gridsize = bounds.gridsize;
-        var zoom = bounds.zoom;
-        getClusters(socket.id, b, zoom);
+        getClusters(ses, b, zoom);
     });
-    clients[socket.id].on('stopEverything', function() {
-        if (typeof clients[socket.id] != 'undefined') {
-            clients[socket.id].canQuery = false;
-            clients[socket.id].emit('removeMarkers');
+    socket.on('stopEverything', function(ses) {
+        if (typeof clients[ses] != 'undefined') {
+            clients[ses].canQuery = false;
+            clients[ses].emit('removeMarkers');
         }
     });
-    clients[socket.id].on('disconnect', function() {
+    socket.on('disconnect', function() {
         var index = clients[socket.id];
         if (index != -1) {
             delete clients[socket.id];

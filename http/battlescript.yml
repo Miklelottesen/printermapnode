@@ -1,0 +1,29 @@
+config:
+  target: "http://127.0.0.1:8080"
+  phases:
+    -
+      duration: 1
+      arrivalCount: 40
+scenarios:
+  -
+    engine: "socketio"
+    flow:
+      -
+        get:
+          url: "/"
+      -
+        emit:
+          channel: "getCount"
+          data: {latA: 65.46242829709595, latB: 40.18653913939549, lngA: 44.366367968749955, lngB: -20.452967968750045}
+          response:
+            channel: "countLibraries"
+      -
+        think: 1
+      -
+        emit:
+          channel: "getClusters"
+          data: {latA: 65.46242829709595, latB: 40.18653913939549, lngA: 44.366367968749955, lngB: -20.452967968750045, gridsize: 2, zoom: 5}
+          response:
+            channel: "getCluster"
+      -
+        think: 1

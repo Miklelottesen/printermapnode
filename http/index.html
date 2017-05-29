@@ -75,10 +75,10 @@
                   socket.on('connect', function () {
                     //socket.emit('message');
 
-                    socket.on("SessionID", function (ses, id){
+                    /*socket.on("SessionID", function (ses, id){
                         console.log(ses+" - "+id);
                         sessionId = ses;
-                    });
+                    });*/
 
                     socket.on('message', function (msg) {
                       console.log(msg);
@@ -138,16 +138,20 @@
         lastCount = rows[0]["count"];
         if(lastCount < countLimit){
             // Sufficiently few, get markers
-            socket.emit("getLibraries",sessionId,constructNodeBoundsObject());
+            socket.emit("getLibraries",constructNodeBoundsObject());
         } else {
             // Too many printers, get clusters
             removeAllMarkers();
-            socket.emit("getClusters",sessionId,constructNodeBoundsObjectGridsize(),map.getZoom());
+            var nbog = constructNodeBoundsObjectGridsize();
+            var nbz = map.getZoom();
+            console.log("Clusterdata: \n"+JSON.stringify(nbog)+"\n"+JSON.stringify(nbz));
+            socket.emit("getClusters",nbog,nbz);
         }
     }
 
     function onGetLibraries(rows){
         removeAllMarkers();
+        console.log(rows.length+" markers received");
         for(i = 0; i < rows.length; i++){
             var lName = rows[i]["name"];
             var lLat = rows[i]["lat"];
@@ -188,7 +192,7 @@
         var nB = newBounds.ne;
         if ((cB.lat - nB.lat <= (bLimitLat * -1) || cB.lat - nB.lat >= bLimitLat) || (cB.lng - nB.lng <= (bLimitLng * -1) || cB.lng - nB.lng >= bLimitLng)) {
             // Bounds changed sufficiently
-            socket.emit("stopEverything", sessionId);
+            socket.emit("stopEverything");
             currentBounds = newBounds;
             // Get printerCount
             getPrinterCount();
@@ -238,12 +242,14 @@
             latB : currentBounds.sw.lat,
             lngA : currentBounds.ne.lng,
             lngB : currentBounds.sw.lng,
-            gridsize : clusterGridSize
+            gridsize : clusterGridSize,
+            zoom : map.getZoom()
         };
     }
 
     function getPrinterCount() {
-        socket.emit("getCount",sessionId, constructNodeBoundsObject());
+        console.log("Countdata: \n"+JSON.stringify(constructNodeBoundsObject()));
+        socket.emit("getCount",constructNodeBoundsObject());
         //var url = constructAjaxUrl("countPrinters.php");
         //console.log(url);
         /*$.ajax({
@@ -269,6 +275,7 @@
     		if(data != ""){
 	    		var printerLocations = JSON.parse(data);
 	    		removeAllMarkers();
+                console.log(printerLocations.length+" markers received");
 	    		for(i=0; i< printerLocations.length; i++){
 	    			var mPos = {
 	    				lat: parseFloat(printerLocations[i][1]),
