@@ -24,7 +24,7 @@ var pool = mysql.createPool({
     user: 'visitor',
     password: 'VisitMe1234',
     database: 'PrinterMap',
-    debug: false
+    debug: true
 });
 
 var canQuery = true;
@@ -52,6 +52,7 @@ function handle_database(ses, sql, tag) {
                 if (typeof clients[ses] != 'undefined') {
                     clients[ses].emit(tag, rows);
                     console.log("Emitting row(s) to " + clients[ses].id);
+                    console.log(JSON.stringify(rows));
                 }
             } else {
                 if (typeof clients[ses] != 'undefined') {
@@ -219,7 +220,7 @@ function getLibs(ses, bounds) {
     var endLat = b.latB;
     var endLng = b.lngB;
 
-    var sql = "SELECT name,lat,lng FROM libraries";
+    var sql = "SELECT name,address,lat,lng FROM libraries";
     sql += " WHERE lat > " + startLat;
     sql += " AND lat < " + endLat;
     sql += " AND lng > " + startLng;
@@ -254,7 +255,7 @@ function getClusters(ses, bounds, zoom) {
             whereGroup += " AND lng > " + lngA;
             whereGroup += " AND lng < " + lngB;
 
-            var sql = "SELECT AVG(lat) as lat, AVG(lng) as lng, COUNT(*) as count, country";
+            var sql = "SELECT AVG(lat) as lat, AVG(lng) as lng, COUNT(*) as count, country, MIN(lat) AS startLat, MIN(lng) AS startLng, MAX(lat) AS endLat, MAX(lng) AS endLng";
             sql += " FROM libraries";
             sql += whereGroup;
             sql += " GROUP BY country";

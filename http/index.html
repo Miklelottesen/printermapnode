@@ -6,13 +6,190 @@
        	padding:0;
        	margin:0;
        }
+
+       .hidden {
+        display: none!important;
+       }
+
        #map {
         height: 100vh;
         width: 100vw;
        }
+
+       div#mapSearch {
+           position: absolute;
+           top: 0;
+           left: 0;
+           min-height: 40px;
+           width: 700px;
+           z-index: 9999;
+           display: inline-block;
+           padding: 10px;
+           max-width: 100%;
+           vertical-align: top!important;
+       }
+
+       div#mainGroup {
+           width: 75%!important;
+           display: inline-block;
+           min-height: 40px!important;
+           margin: 0;
+           vertical-align: top;
+           background-color: #009ed4;
+           outline: 4px solid #009ed4;
+           box-shadow: 3px 5px 50px rgba(0,0,0,0.2);
+       }
+
+       input#cancelSearch {
+           width: 60px;
+           display: inline-block;
+           margin: 0;
+           height: 40px!important;
+           margin-left: 4%;
+           border: 0;
+           background-color: #fd7845;
+           color: #ffffff;
+           font-size: 20px;
+           cursor: pointer;
+           box-shadow: 3px 5px 50px rgba(0,0,0,0.2);
+       }
+
+       input#searchQuery {
+           width: 70%;
+           height: 40px!important;
+           padding-left: 5px;
+           border: 0;
+           margin: 0;
+           margin-right: -5px;
+       }
+
+       input#doSearch {
+           width: 28%;
+           border: 0;
+           height: 40px!important;
+           margin: 0;
+           background-color: transparent;
+           color: #ffffff;
+           cursor: pointer;
+       }
+
+       div#searchResults {
+           max-height: 70vh!important;
+           overflow-y: auto;
+           overflow-x: hidden;
+           padding: 1px;
+           padding-bottom: 0px;
+           padding-top: 0px;
+       }
+
+       .searchResult {
+           width: 100%;
+           height: 50px;
+           vertical-align: middle!important;
+           background-color: #ffffff;
+           /* margin: 1px; */
+           margin-bottom: 1px;
+           cursor: pointer;
+       }
+
+       .searchResult p {
+           vertical-align: top;
+           display: inline-block;
+           /* height: 100%; */
+           /*line-height: 3;*/
+           padding-left: 5px;
+           font-family: sans-serif;
+           max-width: 70%;
+           font-size: 69%;
+           padding-top: 6px;
+       }
+
+       .searchResult p b {
+        font-size: 18px;
+       }
+
+       .searchResult:first-of-type {
+           margin-top: 1px;
+       }
+
+       .searchResult img {
+           height: 35px;
+           /* padding-top: 1%; */
+           /* padding-left: 1%; */
+           margin: 5px;
+           margin-top: 6px;
+       }
+
+       ::-webkit-scrollbar {
+         width: 4px;
+         height: 4px;
+       }
+       ::-webkit-scrollbar-button {
+         width: 0px;
+         height: 0px;
+       }
+       ::-webkit-scrollbar-thumb {
+         background: #e1e1e1;
+         border: 0px solid #ffffff;
+         border-radius: 50px;
+       }
+       ::-webkit-scrollbar-thumb:hover {
+         background: #ffffff;
+       }
+       ::-webkit-scrollbar-thumb:active {
+         background: #000000;
+       }
+       ::-webkit-scrollbar-track {
+         background: #009de4;
+         border: 0px none #ffffff;
+         border-radius: 50px;
+       }
+       ::-webkit-scrollbar-track:hover {
+         background: #666666;
+       }
+       ::-webkit-scrollbar-track:active {
+         background: #333333;
+       }
+       ::-webkit-scrollbar-corner {
+         background: transparent;
+       }
     </style>
   </head>
   <body>
+    <div id="mapSearch">
+        <div id="mainGroup">
+            <input id="searchQuery" type="text" placeholder="Søg på kort">
+            <input id="doSearch" type="button" value="Søg">
+            <div id="searchResults">
+                <!--<div class="searchResult">
+                    <img src="https://avatars0.githubusercontent.com/u/3717923?v=3&s=400">
+                    <p>Sth. Street 48, 8260, Viby J</p>
+                </div>
+                <div class="searchResult">
+                    <p>Sth. Street 48, 8260, Viby J</p>
+                </div>
+                <div class="searchResult">
+                    <p>Sth. Street 48, 8260, Viby J</p>
+                </div>
+                <div class="searchResult">
+                    <p>Sth. Street 48, 8260, Viby J</p>
+                </div>
+                <div class="searchResult">
+                    <p>Sth. Street 48, 8260, Viby J</p>
+                </div>
+                <div class="searchResult">
+                    <p>Sth. Street 48, 8260, Viby J</p>
+                </div>
+                <div class="searchResult">
+                    <p>Sth. Street 48, 8260, Viby J</p>
+                </div>
+                <div class="searchResult">
+                    <p>Sth. Street 48, 8260, Viby J</p>
+                </div>-->
+            </div>
+        </div>
+        <input id="cancelSearch" class="hidden" type="button" value="X">
+    </div>
     <div id="map"></div>
     <script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.7.3/socket.io.js"></script>
@@ -20,12 +197,15 @@
     var userPosition = [];
     var userIp;
     var map;
+    var service;
+    var infowindow;
     var currentBounds;
     var isFirstRun = true;
     var detectionLimit = 0; // How much of the view has to be moved in order to update markers
     var offlineMarkers = [];
     var fakeClusterMarkers = [];
     var markerCluster;
+    var lastMarker;
     var nodeUrl = "http://localhost:1337";
     //var nodeUrl = "https://find-printers-map.appspot.com";
     //var nodeUrl = "https://fpserver.herokuapp.com";
@@ -40,98 +220,231 @@
     var markerClicks = 0;
     var clickedLat;
     var clickedLng;
+    var searchTimer;
+    var startLocation;
 
     function initMap() {
-        nodeUrl = window.location.href;
-        var urlPrefix = nodeUrl.split("://")[0]+"://";
-        nodeUrl = nodeUrl.split("://")[1];
-        if(nodeUrl.split(":").length > 1){
-            nodeUrl = nodeUrl.split(":")[0] + ":8080";
-        }
-        else if (nodeUrl.split("/").length > 1){
-            var newUrl = "";
-            for(i = 0; i < nodeUrl.split("/").length; i++){
-                newUrl += nodeUrl.split("/")[i];
-                if(i+1 != nodeUrl.split("/").length){
-                    newUrl += "/";
-                }
-            }
-            nodeUrl = newUrl;
-        }
-        nodeUrl = urlPrefix+nodeUrl;
-        console.log(nodeUrl);
+        nodeUrl = createNodeURL();
         // Get user's location based on IP lookup
         $.getJSON("https://geoip-db.com/json/geoip.php?jsonp=?")
             .done(function(location) {
-                // Start socket.io connection
-                var options = {forceNew :true,
-                               reconnection :false,
-                               timeout:10000,
-                               "flash policy port":8080,
-                               autoConnect:true,
-                               "path":"/node_modules/socket.io",
-                               "transports":["polling"]}
-                socket = io.connect(nodeUrl);
-                  socket.on('connect', function () {
-                    //socket.emit('message');
-
-                    /*socket.on("SessionID", function (ses, id){
-                        console.log(ses+" - "+id);
-                        sessionId = ses;
-                    });*/
-
-                    socket.on('message', function (msg) {
-                      console.log(msg);
-                    });
-
-                    socket.on("countLibraries", function(rows){
-                        onCountLibraries(rows);
-                    });
-                    socket.on("getLibraries",function(rows){
-                        onGetLibraries(rows);
-                    });
-                    socket.on("getCluster", function(rows, isLast){
-                        onGetClusterMarker(rows);
-                        console.log(isLast);
-                        if(isLast) console.log("Merge markers");
-                    });
-                    socket.on("removeMarkers", function(){
-                        removeAllMarkers();
-                    })
-                    socket.on("mergeFakeClusters", function(empty){
-                        console.log("Duh");
-                        filterRows();
-                    });
-                    socket.on("serverError", function (err){
-                        console.log("Error: "+err.code+"\nStatus: "+err.status);
-                    })
-                  });
-
-                userPosition = [location.latitude, location.longitude];
-                var userPos = {
-                    lat: userPosition[0],
-                    lng: userPosition[1]
-                };
-                userIp = location.IPv4;
-                map = new google.maps.Map(document.getElementById("map"), {
-                    zoom: 5,
-                    center: userPos
-                });
-                map.addListener("bounds_changed", function() {
-                    boundsChanged();
-                });
-                map.addListener("zoom_changed", function() {
-                    isFirstRun = true;
-                    console.log("Zoom: " + map.getZoom());
-                    boundsChanged();
-                });
-                // Attempt to get user's physical position
-                // TODO: implement!
-                /*var marker = new google.maps.Marker({
-                    position: userPos,
-                    map: map
-                });   */
+                startLocation = location;
+                startApp(location);
+            })
+            .fail(function(){
+                var locationF = createFakeLocationObject();
+                startLocation = locationF;
+                startApp(locationF);
             });
+    }
+
+    function createNodeURL(){
+        var nUrl = window.location.href;
+        var urlPrefix = nUrl.split("://")[0]+"://";
+        nUrl = nUrl.split("://")[1];
+        if(nUrl.split(":").length > 1){
+            nUrl = nUrl.split(":")[0] + ":8080";
+        }
+        else if (nUrl.split("/").length > 1){
+            var newUrl = "";
+            for(i = 0; i < nUrl.split("/").length; i++){
+                newUrl += nUrl.split("/")[i];
+                if(i+1 != nUrl.split("/").length){
+                    newUrl += "/";
+                }
+            }
+            nUrl = newUrl;
+        }
+        nUrl = urlPrefix+nUrl;
+        console.log(nUrl);
+        return nUrl;
+    }
+
+    function initializeSearchListeners(){
+      $("#searchQuery").on("change paste keyup", function(){
+        restartSearchTypingTimer();
+        toggleCancelButton();
+      });
+      $("#cancelSearch").click(function(){
+        clearSearchResults();
+      });
+    }
+
+    function toggleCancelButton(){
+      if($("#searchQuery").val() == ""){
+        displayCancelBtn(false);
+      }
+      else {
+        displayCancelBtn(true);
+      }
+    }
+
+    function displayCancelBtn(display){
+      if(display && $("#cancelSearch").hasClass("hidden")){
+        $("#cancelSearch").removeClass("hidden");
+      }
+      else if(!display && !$("#cancelSearch").hasClass("hidden")){
+        $("#cancelSearch").addClass("hidden");
+      }
+    }
+
+    function restartSearchTypingTimer(){
+      stopSearchTimer();
+      searchTimer = window.setTimeout(function(){
+        var q = $("#searchQuery").val();
+        console.log(startLocation);
+        var ul = new google.maps.LatLng(startLocation.latitude, startLocation.longitude);
+        var request = {
+          location: ul,
+          radius: 2000,
+          query: q
+        };
+        service.textSearch(request, onTextSearch);
+      }, 300);
+    }
+
+    function stopSearchTimer(){
+      if(typeof searchTimer != null){
+        window.clearTimeout(searchTimer);
+        searchTimer = null;
+      }
+    }
+
+    function onTextSearch(results, status){
+      if(status == google.maps.places.PlacesServiceStatus.OK) {
+        //console.log(results);
+        clearSearchResults(false);
+        for(i = 0; i < results.length; i++){
+          var imgSrc = results[i].icon;
+          var txt = "<b>"+results[i].name+"</b><br>";
+          txt += results[i].formatted_address;
+          var coords = {
+            lat: results[i].geometry.location.lat(),
+            lng: results[i].geometry.location.lng()
+          };
+          var id = results[i].id;
+          $("#searchResults").append(constructSearchResultHTML(id,imgSrc,txt,coords));
+          $("#"+id).click(function(){
+            map.setCenter(new google.maps.LatLng(
+              coords.lat,
+              coords.lng));
+            map.setZoom(15);
+            clearSearchResults(true)
+          });
+        }
+      }
+    }
+
+    function clearSearchResults(clearSearchBox){
+      $("#searchResults").empty();
+      if (clearSearchBox){
+        stopSearchTimer();
+        $("#searchQuery").val("");
+      }
+    }
+
+    function constructSearchResultHTML(id, imgSrc, txt, coords){
+        var ret = '<div id="'+id+'" data-lat="'+coords.lat+'" data-lng="'+coords.lng+'" class="searchResult">';
+        ret += '<img src="'+imgSrc+'"><p>'+txt+'</p>';
+        ret += '</div>';
+        return ret;
+    }
+
+    function createFakeLocationObject(){
+        return {
+            latitude: 55.676098,
+            longitude: 12.568337,
+            IPv4: null
+        };
+    }
+
+    function startApp(startLocation){
+        // Start socket.io connection
+        var options = {forceNew :true,
+                       reconnection :false,
+                       timeout:10000,
+                       "flash policy port":8080,
+                       autoConnect:true,
+                       "path":"/node_modules/socket.io",
+                       "transports":["polling"]}
+        socket = io.connect(nodeUrl);
+          socket.on('connect', function () {
+            //socket.emit('message');
+
+            /*socket.on("SessionID", function (ses, id){
+                console.log(ses+" - "+id);
+                sessionId = ses;
+            });*/
+
+            socket.on('message', function (msg) {
+              console.log(msg);
+            });
+
+            socket.on("countLibraries", function(rows){
+                onCountLibraries(rows);
+            });
+            socket.on("getLibraries",function(rows){
+                onGetLibraries(rows);
+            });
+            socket.on("getCluster", function(rows, isLast){
+                onGetClusterMarker(rows);
+                console.log(isLast);
+                if(isLast) console.log("Merge markers");
+            });
+            socket.on("removeMarkers", function(){
+                removeAllMarkers();
+            })
+            socket.on("mergeFakeClusters", function(empty){
+                console.log("Duh");
+                filterRows();
+            });
+            socket.on("serverError", function (err){
+                console.log("Error: "+err.code+"\nStatus: "+err.status);
+            })
+          });
+
+        userPosition = [startLocation.latitude, startLocation.longitude];
+        var userPos = new google.maps.LatLng(userPosition[0], userPosition[1]);
+        userIp = startLocation.IPv4;
+        map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 5,
+            center: userPos,
+            streetViewControl: false,
+            mapTypeControl: false
+        });
+        map.addListener("bounds_changed", function() {
+            boundsChanged();
+        });
+        map.addListener("zoom_changed", function() {
+            isFirstRun = true;
+            console.log("Zoom: " + map.getZoom());
+            boundsChanged();
+        });
+        service = new google.maps.places.PlacesService(map);
+        initializeSearchListeners();
+        // Attempt to get user's physical position
+        getLocation();
+        // TODO: implement!
+        /*var marker = new google.maps.Marker({
+            position: userPos,
+            map: map
+        });   */
+    }
+
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(setUserPosition);
+        } 
+    }
+
+    function setUserPosition(pos) {
+      startLocation.latitude = pos.coords.latitude;
+      startLocation.longitude = pos.coords.longitude;
+      var userPos = new google.maps.LatLng(startLocation.latitude, startLocation.longitude);
+      var userMarker = new google.maps.Marker({
+        position: userPos,
+        map: map
+      });
     }
 
     function onCountLibraries(rows){
@@ -157,7 +470,8 @@
             var lLat = rows[i]["lat"];
             var lLng = rows[i]["lng"];
             var lPos = {lat: lLat, lng: lLng};
-            constructMarker(lPos,lName);
+            var lAddr = rows[i]["address"];
+            constructMarker(lPos,lName,lAddr);
         }
         reloadClustering();
     }
@@ -165,11 +479,26 @@
     function onGetClusterMarker(rows){
         //removeAllMarkers();
         for(i = 0; i < rows.length; i++){
-            var lLat = rows[i]["lat"];
-            var lLng = rows[i]["lng"];
-            var lCount = rows[i]["count"];
+            var r = rows[i];
+            var lLat = r["lat"];
+            var lLng = r["lng"];
+            var lCount = r["count"];
             var lPos = {lat: lLat, lng: lLng};
-            constructFakeClusterMarker(lPos,lCount);
+            /*var lBounds = {
+                ne: {
+                    lat: r["endLat"],
+                    lng: r["endLng"]
+                },
+                sw: {
+                    lat: r["startLat"],
+                    lng: r["startLng"]
+                }
+            };*/
+            var lBounds = new google.maps.LatLngBounds(
+                new google.maps.LatLng(r["startLat"],r["startLng"]),
+                new google.maps.LatLng(r["endLat"],r["endLng"])
+            );
+            constructFakeClusterMarker(lPos,lCount, lBounds);
         }
     }
 
@@ -322,7 +651,7 @@
         });
     }
 
-    function constructMarker(pos,title){
+    function constructMarker(pos,title,address){
         var image = {
                   url: '/imgs/markerO.png',
                   // This marker is 20 pixels wide by 32 pixels high.
@@ -332,17 +661,196 @@
                   // The anchor for this image is the base of the flagpole at (0, 32).
                   anchor: new google.maps.Point(12, 13)
                 };
+        var parser = new DOMParser;
+        var domName = parser.parseFromString(
+            '<!doctype html><body>' + title,
+            'text/html');
+        var decodedName = domName.body.textContent;
     	var marker = new google.maps.Marker({
 	        position: pos,
             icon: image,
-	        title: title,
-	        map: map
+	        title: decodeString(title),
+	        map: map,
+            name: title,
+            address: address
 	    });
+        var aSplit = address.split(" - ");
+        address = aSplit[0];
+        marker.addListener('click', function(){
+            //console.log(marker.getPosition());
+            lastMarker = marker;
+            
+            var domAddr = parser.parseFromString(
+                '<!doctype html><body>' + address,
+                'text/html');
+            
+            var decodedAddres = domAddr.body.textContent;
+            var request = {
+                location: marker.getPosition(),
+                radius: 5000,
+                keyword: decodeString(address),
+                name: decodeString(title)
+            };
+            console.log(request);
+            //console.log(address);
+            service.nearbySearch(request, function callback(results, status){
+                onNearbySearch(results, status, marker);
+            });
+        });
 	    //marker.setMap(map);
 	    offlineMarkers.push(marker);
     }
 
-    function constructFakeClusterMarker(pos,count){
+    function decodeString(str){
+        var parser = new DOMParser;
+        var dom = parser.parseFromString(
+            '<!doctype html><body>' + str,
+            'text/html');
+        return dom.body.textContent;
+    }
+
+    function onNearbySearch(results, status, marker) {
+        console.log(status);
+        console.log(results);
+        if(status == google.maps.places.PlacesServiceStatus.OK) {
+            //console.log(results[0]['place_id']);
+            var pID = results[0]['place_id'];
+            service.getDetails({placeId: pID}, onGetPlaceDetails);
+        }
+        else {
+            // No results from search, use (limited) marker info instead:
+            var place = {
+                name: marker.name,
+                formatted_address: marker.address
+            };
+            makeNonPrinchInfoWindow(place, marker);
+        }
+    }
+
+    function onGetPlaceDetails(place, status){
+        if(status == google.maps.places.PlacesServiceStatus.OK){
+            console.log(place);
+            makeNonPrinchInfoWindow(place, lastMarker);
+        }
+    }
+
+    function makeNonPrinchInfoWindow(place, marker) {
+        /*
+        Possible properties:
+            - name
+            - formatted_address (split by ", ")
+            - international_phone_number
+            - url (Google page)
+            - website (own website url)
+            - opening_hours
+                - open_now (bool)
+                - weekday_text
+                    - [n] (capitalize first letter)
+            - photos
+                - [n]
+                    - getUrl()
+        */
+        var html = "";
+
+        html += handleHeading(place['name'], marker['name']);
+        html += handleAddress(place['formatted_address']);
+        html += handlePhone(place['international_phone_number']);
+        html += handleUrls([{
+            obj: place['url'],
+            txt: "Mere info"
+        },{
+            obj: place['website'],
+            txt: "Besøg hjemmeside"
+        }]);
+        html += handleOpeningHours(place['opening_hours']);
+        html += handlePhotos(place['photos']);
+
+        infowindow = new google.maps.InfoWindow({
+                  content: html
+                });
+        infowindow.open(map, marker);
+
+        console.log(html);
+    }
+
+    function handleHeading(prop, def){
+        var ret = "<h2>";
+        ret += (propertyExists(prop)) ? prop : def;
+        ret += "</h2>";
+        return ret;
+    }
+
+    function handleAddress(prop){
+        var ret = "";
+
+        if(propertyExists(prop)){
+            var props = prop.split(", ");
+            for(i=0; i < props.length; i++){
+                ret += "<p>"+props[i]+"</p>";
+            }
+        }
+        return ret;
+    }
+
+    function handlePhone(prop){
+        if(propertyExists(prop)){
+            return "<p><b>Telefon: </b>"+prop+"</p><br>";
+        }
+        else return "";
+    }
+
+    function handleUrls(props){
+        var ret = "";
+        for(i = 0; i < props.length; i++){
+            if(propertyExists(props.obj)){
+                ret += '<p><a target="_blank" href="'+prop.obj+'">'+prop.txt+'</a></p>';
+            }
+        }
+        return ret;
+    }
+
+    function handleOpeningHours(prop){
+        if(propertyExists(prop)){
+            if(propertyExists(prop['open_now'])){
+                if(propertyExists(prop['weekday_text'])){
+                    var today = new Date().getDay();
+                    if(today == 0) todayWeekday = 7; // JS weekdays starts with Sunday, Google's starts with Monday
+                    today--;
+                    if(propertyExists(prop['weekday_text'][today])){
+                        var openedText = 'lukket';
+                        if(prop['open_now']) openedText = 'åbent';
+                        var ret = "";
+                        ret += "<p><b>Åbningstider: </b></p>";
+                        ret += "<p>"+capitalizeFirstLetter(prop['weekday_text'][today])+" ("+openedText+")</p><br>";
+                        return ret;
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    function handlePhotos(prop, ind){
+        var photoProps = {
+            maxWidth: 640
+        }
+        if(propertyExists(prop)){
+            if(propertyExists(prop[i])){
+                return "<img src=\""+prop[i].getUrl(photoProps)+"\" />";
+            }
+        }
+        return "";
+    }
+
+    function propertyExists(property) {
+        return (typeof property != 'undefined') ? true : false;
+    }
+
+    function capitalizeFirstLetter(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+
+    function constructFakeClusterMarker(pos,count,bounds){
         var iconSize = 45;
         var fileName = "clusterO.png";
         if(count > 999){
@@ -368,14 +876,22 @@
                   anchor: new google.maps.Point(halfSize, halfSize)
                 };
         var nCount = count.toLocaleString();
-        newmarker = new google.maps.Marker({
+        var newmarker = new google.maps.Marker({
             position: pos,
             label: {text: count.toLocaleString(), color: "white"},
             map: map,
             icon: image
         });
-        google.maps.event.addDomListener(newmarker, 'click', function() {
-            getMarkerDistance(pos);
+        newmarker.addListener('click', function() {
+            //getMarkerDistance(pos);
+            /*var currentZoom = map.getZoom();
+            var newZoom = currentZoom + 4;
+            map.setZoom(newZoom);
+            map.setCenter(newmarker.getPosition());*/
+            console.log(bounds);
+            console.log(map.getBounds());
+            map.fitBounds(bounds);
+
         });
         fakeClusterMarkers.push(newmarker);
     }
@@ -482,15 +998,18 @@
         ];
     	markerCluster = new MarkerClusterer(map, offlineMarkers,{
     		styles: clusterStyles,
-    		gridSize: 150,
-    		maxZoom: 15
+    		gridSize: 90,
+    		maxZoom: 15,
+        minimumClusterSize: 5,
+        averageCenter: true,
+        zoomOnClick: true
     	});
     }
     </script>
     <script src="markerclustering.js">
     </script>
     <script async defer
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD1F1Olznz9guWfWAYv1lr4pUIr5ij83FE&callback=initMap">
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD1F1Olznz9guWfWAYv1lr4pUIr5ij83FE&callback=initMap&libraries=places">
     </script>
   </body>
 </html>
