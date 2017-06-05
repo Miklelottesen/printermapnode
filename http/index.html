@@ -41,7 +41,7 @@
            border-radius: 5px;
        }
 
-       input#cancelSearch {
+       #cancelSearch {
            border-radius: 5px;
            width: 60px;
            display: inline-block;
@@ -49,11 +49,13 @@
            height: 40px!important;
            margin-left: 4%;
            border: 0;
-           background-color: #fd7845;
-           color: #ffffff;
+           background-color: transparent;
+           /* color: #ffffff; */
            font-size: 20px;
            cursor: pointer;
-           box-shadow: 3px 5px 50px rgba(0,0,0,0.2);
+           /* box-shadow: 3px 5px 50px rgba(0,0,0,0.2); */
+           position: absolute;
+           left: 310px;
        }
 
        input#searchQuery {
@@ -124,6 +126,11 @@
            margin-top: 6px;
        }
 
+       #cancelSearch img {
+           height: 40px;
+           padding-right: 15px;
+       }
+
        ::-webkit-scrollbar {
          width: 4px;
          height: 4px;
@@ -163,6 +170,9 @@
     <div id="mapSearch">
         <div id="mainGroup">
             <input id="searchQuery" type="text" placeholder="Søg på kort">
+            <button id="cancelSearch" class="hidden" type="button">
+              X
+            </button>
             <input id="doSearch" type="button" value="Søg">
             <div id="searchResults">
                 <!--<div class="searchResult">
@@ -192,7 +202,6 @@
                 </div>-->
             </div>
         </div>
-        <input id="cancelSearch" class="hidden" type="button" value="X">
     </div>
     <div id="map"></div>
     <script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
@@ -207,8 +216,10 @@
     var isFirstRun = true;
     var detectionLimit = 0; // How much of the view has to be moved in order to update markers
     var offlineMarkers = [];
+    var onlineMarkers = [];
     var fakeClusterMarkers = [];
     var markerCluster;
+    var princhMarkerCluster;
     var lastMarker;
     var nodeUrl = "http://localhost:1337";
     //var nodeUrl = "https://find-printers-map.appspot.com";
@@ -226,6 +237,7 @@
     var clickedLng;
     var searchTimer;
     var startLocation;
+    var userMarker;
 
     function initMap() {
         nodeUrl = createNodeURL();
@@ -266,12 +278,75 @@
 
     function initializeSearchListeners(){
       $("#searchQuery").on("change paste keyup", function(){
-        restartSearchTypingTimer();
+        if($("#searchQuery").val() == "")
+          clearSearchResults(true);
+        else
+          restartSearchTypingTimer();
         toggleCancelButton();
       });
       $("#cancelSearch").click(function(){
         clearSearchResults(true);
       });
+      $("#doSearch").click(function(){
+        imFeelingLucky();
+      });
+      $("#searchQuery").on("keypress", function(e){
+        if(e.which === 13) // User pressed enter
+        {
+          imFeelingLucky();
+        }
+      });
+    }
+
+    function buildPrinchRestUrl(){
+        var url = "https://rest.princh.com/printer?latitude=";
+        url += map.getCenter().lat();
+        url += "&longitude=";
+        url += map.getCenter().lng();
+        url += "&radius=" + (Math.floor(16000 / map.getZoom()));
+        return url;
+    }
+
+    function getPrinchLocations(){
+      var restUrl = buildPrinchRestUrl();
+      $.getJSON(restUrl, {}, function(data, ststus, xhr) {
+          //console.log(data);
+          makePrinchMarkers(data);
+      });
+    }
+
+    function imFeelingLucky() {
+      var ul = new google.maps.LatLng(startLocation.latitude, startLocation.longitude);
+      var q = $("#searchQuery").val();
+      var request = createSearchRequest(ul, q);
+      if(q != "")
+        service.textSearch(request, onFeelingLucky);
+    }
+
+    function onFeelingLucky(results, status) {
+      if(status == google.maps.places.PlacesServiceStatus.OK) {
+        //console.log(results);
+        
+        var coords = {
+          lat: results[0].geometry.location.lat(),
+          lng: results[0].geometry.location.lng()
+        };
+        map.setCenter(new google.maps.LatLng(
+          coords.lat,
+          coords.lng));
+        map.setZoom(15);
+        setUserPosition({
+          coords: {
+            latitude: coords.lat,
+            longitude: coords.lng
+          }
+        });
+        clearSearchResults(true);
+        window.setTimeout(function(){
+          // Workaround for moronically quick users
+          clearSearchResults(true);
+        },15);
+      }
     }
 
     function toggleCancelButton(){
@@ -292,25 +367,42 @@
       }
     }
 
+    function cancelBtnSpinnerToggle(showSpinner) {
+      console.log("Spinnerchange");
+      $("#cancelSearch").empty();
+      if(showSpinner) {
+        $("#cancelSearch").append("<img src=\"/imgs/ring.gif\">");
+      } else {
+        $("#cancelSearch").append("X");
+      }
+    }
+
     function restartSearchTypingTimer(){
       stopSearchTimer();
+      cancelBtnSpinnerToggle(true);
       searchTimer = window.setTimeout(function(){
         var q = $("#searchQuery").val();
         console.log(startLocation);
         var ul = new google.maps.LatLng(startLocation.latitude, startLocation.longitude);
-        var request = {
-          location: ul,
-          radius: 2000,
-          query: q
-        };
+        var request = createSearchRequest(ul, q);
         service.textSearch(request, onTextSearch);
+        cancelBtnSpinnerToggle(false);
       }, 300);
+    }
+
+    function createSearchRequest(location, query) {
+      return {
+        location: location,
+        radius: 2000,
+        query: query
+      };
     }
 
     function stopSearchTimer(){
       if(typeof searchTimer != null){
         window.clearTimeout(searchTimer);
         searchTimer = null;
+        cancelBtnSpinnerToggle(false);
       }
     }
 
@@ -338,7 +430,11 @@
               coords.lat,
               coords.lng));
             map.setZoom(15);
-            clearSearchResults(true)
+            setUserPosition({coords: {
+              latitude: coords.lat,
+              longitude: coords.lng
+            }});
+            clearSearchResults(true);
           });
         }
       }
@@ -360,6 +456,8 @@
         stopSearchTimer();
         $("#searchQuery").val("");
       }
+      toggleCancelButton();
+      cancelBtnSpinnerToggle(false);
     }
 
     function constructSearchResultHTML(id, imgSrc, txt, coords, tooltip){
@@ -443,6 +541,7 @@
         initializeSearchListeners();
         // Attempt to get user's physical position
         getLocation();
+        getPrinchLocations();
         // TODO: implement!
         /*var marker = new google.maps.Marker({
             position: userPos,
@@ -452,15 +551,21 @@
 
     function getLocation() {
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(setUserPosition);
+            navigator.geolocation.getCurrentPosition(function(pos){
+              startLocation.latitude = pos.coords.latitude;
+              startLocation.longitude = pos.coords.longitude;
+              setUserPosition(pos);
+            });
         } 
     }
 
     function setUserPosition(pos) {
-      startLocation.latitude = pos.coords.latitude;
-      startLocation.longitude = pos.coords.longitude;
-      var userPos = new google.maps.LatLng(startLocation.latitude, startLocation.longitude);
-      var userMarker = new google.maps.Marker({
+      var userPos = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+      if(typeof userMarker != "undefined"){
+        userMarker.setMap(null);
+        userMarker = null;
+      }
+      userMarker = new google.maps.Marker({
         position: userPos,
         map: map
       });
@@ -492,7 +597,21 @@
             var lAddr = rows[i]["address"];
             constructMarker(lPos,lName,lAddr);
         }
+        //removeOverlappingLocations();
+        //console.log(onlineMarkers[0]);
         reloadClustering();
+    }
+
+    function makePrinchMarkers(data) {
+      removeAllPrinchMarkers();
+      for(i = 0; i < data.length; i++) {
+        var pos = new google.maps.LatLng(data[i].location.latitude,data[i].location.longitude);
+        var title = data[i].description.name;
+        var address = data[i].location.address;
+        constructPrinchMarker(pos,title,address,data[i]);
+      }
+      reloadPrinchClustering();
+      removeOverlappingLocations();
     }
 
     function onGetClusterMarker(rows){
@@ -670,7 +789,61 @@
         });
     }
 
+    function constructPrinchMarker(pos,title,address,obj) {
+      if (pos.lat() > 70) return false;
+      var image = {
+                url: '/imgs/markerP.png',
+                // This marker is 20 pixels wide by 32 pixels high.
+                size: new google.maps.Size(25, 38),
+                // The origin for this image is (0, 0).
+                origin: new google.maps.Point(0, 0),
+                // The anchor for this image is the base of the flagpole at (0, 32).
+                anchor: new google.maps.Point(12, 38)
+              };
+              var parser = new DOMParser;
+              var domName = parser.parseFromString(
+                  '<!doctype html><body>' + title,
+                  'text/html');
+              var decodedName = domName.body.textContent;
+            var marker = new google.maps.Marker({
+                position: pos,
+                  icon: image,
+                title: decodeString(title),
+                map: map,
+                  name: title,
+                  address: address,
+                  printerdata: obj
+            });
+              var aSplit = address.split(" - ");
+              address = aSplit[0];
+              marker.addListener('click', function(){
+                  //console.log(marker.getPosition());
+                  lastMarker = marker;
+                  
+                  var domAddr = parser.parseFromString(
+                      '<!doctype html><body>' + address,
+                      'text/html');
+                  
+                  var decodedAddres = domAddr.body.textContent;
+                  var request = {
+                      location: marker.getPosition(),
+                      radius: 5000,
+                      keyword: decodeString(address),
+                      name: decodeString(title)
+                  };
+                  //console.log(request);
+                  //console.log(address);
+                  console.log(pos.lat());
+                  service.nearbySearch(request, function callback(results, status){
+                      onNearbySearchPrinch(results, status, marker);
+                  });
+              });
+            //marker.setMap(map);
+            onlineMarkers.push(marker);
+    }
+
     function constructMarker(pos,title,address){
+      //if (isAlreadyPrinchLocation(pos)) return false;
         var image = {
                   url: '/imgs/markerO.png',
                   // This marker is 20 pixels wide by 32 pixels high.
@@ -746,11 +919,67 @@
         }
     }
 
+    function onNearbySearchPrinch(results, status, marker) {
+      console.log(marker.printerdata);
+      if(status == google.maps.places.PlacesServiceStatus.OK) {
+        var pID = results[0]['place_id'];
+        service.getDetails({placeId: pID}, function(place, status){
+          makePrinchInfoWindow(place, marker);
+        });
+      }
+      else {
+        var place = {
+          name: marker.printerdata.description.name,
+          formatted_address: marker.printerdata.location.address
+        };
+        makePrinchInfoWindow(place, marker);
+      }
+    }
+
     function onGetPlaceDetails(place, status){
         if(status == google.maps.places.PlacesServiceStatus.OK){
             console.log(place);
             makeNonPrinchInfoWindow(place, lastMarker);
         }
+    }
+
+    function makePrinchInfoWindow(place, marker) {
+        /*
+        Possible properties:
+            - name
+            - formatted_address (split by ", ")
+            - international_phone_number
+            - url (Google page)
+            - website (own website url)
+            - opening_hours
+                - open_now (bool)
+                - weekday_text
+                    - [n] (capitalize first letter)
+            - photos
+                - [n]
+                    - getUrl(maxWidth)
+        */
+        var html = "";
+
+        html += handleHeading(place['name'], marker.printerdata.description.name);
+        html += handleAddress(place['formatted_address']);
+        html += handlePhone(place['international_phone_number']);
+        html += handleUrls([{
+            obj: place['url'],
+            txt: "Mere info"
+        },{
+            obj: place['website'],
+            txt: "Besøg hjemmeside"
+        }]);
+        html += handleOpeningHours(place['opening_hours']);
+        html += handlePhotos(place['photos']);
+
+        infowindow = new google.maps.InfoWindow({
+                  content: html
+                });
+        infowindow.open(map, marker);
+
+        console.log(html);
     }
 
     function makeNonPrinchInfoWindow(place, marker) {
@@ -767,7 +996,7 @@
                     - [n] (capitalize first letter)
             - photos
                 - [n]
-                    - getUrl()
+                    - getUrl(maxWidth)
         */
         var html = "";
 
@@ -851,7 +1080,7 @@
 
     function handlePhotos(prop, ind){
         var photoProps = {
-            maxWidth: 640
+            maxWidth: 320
         }
         if(propertyExists(prop)){
             if(propertyExists(prop[i])){
@@ -923,7 +1152,7 @@
 
         for(i = 0; i < fakeClusterMarkers.length; i++){
             for(n = i+1; n < fakeClusterMarkers.length; n++){
-                console.log(fakeClusterMarkers[i]);
+                //console.log(fakeClusterMarkers[i]);
                 /*var mi = fakeClusterMarkers[i];
                 var mn = fakeClusterMarkers[n];
                 var markerDist = (Math.abs(mi.latLng.lat() - mn.latLng.lat()) + Math.abs(mi.latLng.lng() - mn.latLng.lng())) / 2;
@@ -1006,6 +1235,34 @@
         fakeClusterMarkers = [];
     }
 
+    function removeAllPrinchMarkers() {
+        for(i=0; i < onlineMarkers.length; i++){
+          onlineMarkers[i].setMap(null);
+        }
+        if(typeof princhMarkerCluster != 'undefined')
+          princhMarkerCluster.clearMarkers();
+        onlineMarkers = [];
+    }
+
+    function reloadPrinchClustering(){
+        var clusterStyles = [
+          {
+            textColor: 'white',
+            url: 'imgs/clusterP.png',
+            height: 45,
+            width: 45
+          }
+        ];
+      princhMarkerCluster = new MarkerClusterer(map, onlineMarkers,{
+        styles: clusterStyles,
+        gridSize: 90,
+        maxZoom: 15,
+        minimumClusterSize: 5,
+        averageCenter: true,
+        zoomOnClick: true
+      });
+    }
+
     function reloadClustering(){
         var clusterStyles = [
           {
@@ -1023,6 +1280,27 @@
         averageCenter: true,
         zoomOnClick: true
     	});
+    }
+
+    function removeOverlappingLocations(){
+      /*console.log("Removing overlaps");
+      for (i = 0; i < offlineMarkers.length; i++) {
+        for (n = 0; n < onlineMarkers.length; n++) {
+          var latOff = offlineMarkers[i];
+          console.log(latOff);
+        }
+      }*/
+    }
+
+    function isAlreadyPrinchLocation(pos) {
+      //console.log(pos);
+
+      var offLat = pos.lat;
+      var offLng = pos.lng;
+      for (i = 0; i < onlineMarkers.length; i++) {
+        //console.log(onlineMarkers[i]);
+      }
+      return true;
     }
     </script>
     <script src="markerclustering.js">
