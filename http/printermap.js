@@ -52,7 +52,7 @@ function setNodeURL() {
 function handlePort(urlHost) {
     if (urlHost.split(":").length > 1) {
         return urlHost.split(":")[0] + ":8080";
-    } else if (windowUrl.split("/").length > 1) {
+    } else if (urlHost.split("/").length > 1) {
         var newUrl = "";
         for (i = 0; i < urlHost.split("/").length; i++) {
             newUrl += urlHost.split("/")[i];
