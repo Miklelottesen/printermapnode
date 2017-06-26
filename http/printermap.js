@@ -215,11 +215,11 @@ function onTextSearch(results, status) {
         clearSearchResults(false);
         var searchResultsLimit = 11;
         if (results.length < searchResultsLimit) searchResultsLimit = results.length;
-        createSearchResults(results);
+        createSearchResults(results, searchResultsLimit);
     }
 }
 
-function createSearchResults(results) {
+function createSearchResults(results, searchResultsLimit) {
     for (i = 0; i < searchResultsLimit; i++) {
         var imgSrc = results[i].icon;
         var resName = shortenString(results[i].name, 46);
