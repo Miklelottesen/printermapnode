@@ -11,7 +11,8 @@
   "dependencies": {
     "express": "^4.10.6",
     "mysql": "^2.5.4",
-    "socket.io": "^1.7.3"
+    "socket.io": "^1.7.3",
+    "squel": "^5.10.0"
   },
   "main": "index.js",
   "scripts": {

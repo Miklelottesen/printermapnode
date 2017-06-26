@@ -1,23 +1,29 @@
-const express = require("express");
-var mysql = require('mysql');
-const path = require('path');
-var clients = {};
+// Imports and setup:
+const express   = require("express");
+var   mysql     = require('mysql');
+const path      = require('path');
+var   clients   = {};
+const PORT      = process.env.PORT || 8080;
+var server      = express().use("/", express.static(__dirname + "/http")).listen(PORT, () => console.log('Server started\nListening on ' + PORT));
+const io        = require("socket.io")(server);
+const squel     = require("squel");
 
-const PORT = process.env.PORT || 8080;
-const INDEX = path.join(__dirname, 'http/index.html');
 
-const server = express()
-    .use("/", express.static(__dirname + "/http"))
-    .listen(PORT, () => console.log('Server started\nListening on ' + PORT));
 
-const io = require("socket.io")(server);
-
-function onRequest(req, res) {
-    res.writeHead(200, {
-        'Access-Control-Allow-Origin': '*'
-    });
+// Vars and constants
+const socketTags = {
+    countLibraries: "countLibraries",
+    getLibraries: "getLibraries",
+    getCluster: "getCluster",
+    serverError: "serverError"
 };
 
+const errors = {
+    db: {
+        connection: 0,
+        query: 1
+    }
+};
 var pool = mysql.createPool({
     connectionLimit: 100, //important
     host: '35.187.104.229',
@@ -27,153 +33,266 @@ var pool = mysql.createPool({
     debug: true
 });
 
-var canQuery = true;
-var sessionData = [];
 
-function handle_database(ses, sql, tag) {
 
-    pool.getConnection(function(err, connection) {
-        if (err) {
-            console.log("Client " + ses + " had an error connecting to database (code 100).");
-            if (typeof clients[ses] != 'undefined') {
-                clients[ses].emit("serverError", {
-                    code: 100,
-                    status: "Error in connection to database",
-                    tags: ["db", "connection"]
-                });
-            }
+// Handle socket emissions
+function onRequest(req, res) {
+    // Gives EVERYONE cors-clearance:
+    res.writeHead(200, {
+        'Access-Control-Allow-Origin': '*'
+    });
+};
+
+function handle_database(sessionID, sqlQuery, socketTag) {
+    pool.getConnection(function(error, connection) {
+        // Handle immediate connection errors:
+        if (error) {
+            handle_errors(sessionID, errors.db.connection);
             return;
         }
 
-        connection.query(sql, function(err, rows) {
+        // Send SQL query and handle response:
+        connection.query(sqlQuery, function(error, rows) {
             connection.release();
-            if (!err) {
-                console.log("Client " + ses + " received " + rows.length + " row(s) from database.");
-                if (typeof clients[ses] != 'undefined') {
-                    clients[ses].emit(tag, rows);
-                    console.log("Emitting row(s) to " + clients[ses].id);
-                    console.log(JSON.stringify(rows));
-                }
+            if (!error) {
+                handle_emit_results(sessionID, rows, socketTag);
             } else {
-                if (typeof clients[ses] != 'undefined') {
-                    console.log("Client " + ses + " had an error performing a database query (code 400).");
-                    clients[ses].emit("serverError", {
-                        code: 400,
-                        status: "Error performing query",
-                        tags: ["db", "query"]
-                    });
-                }
+                handle_errors(sessionID, errors.db.query);
             }
         });
 
-        connection.on('error', function(err) {
-            if (typeof clients[ses] != 'undefined') {
-                console.log("Client " + ses + " had an error connecting to database (code 100).");
-                clients[ses].emit("serverError", {
-                    code: 100,
-                    status: "Error in connection to database",
-                    tags: ["db", "connection"]
-                });
-            }
+        // Handle general connection errors:
+        connection.on('error', function() {
+            handle_errors(sessionID, errors.db.connection);
             return;
         });
     });
 }
 
-function handle_database_multi(ses, queries, zoom) {
+function handle_emit_results(sessionID, data, socketTag) {
+    console.log("Client " + sessionID + " received " + data.length + " row(s) from database.");
+    if (typeof clients[sessionID] !== 'undefined') {
+        if(socketTag === socketTags.getCluster) data = filterRows(data);
+        clients[sessionID].emit(socketTag, data);
+        console.log("Emitting row(s) to " + clients[sessionID].id);
+        console.log(JSON.stringify(data));
+    }
+}
 
-    pool.getConnection(function(err, connection) {
-        if (err) {
-            if (typeof clients[ses] != 'undefined') {
-                console.log("Client " + ses + " had an error connecting to database (code 100).");
-                clients[ses].emit("serverError", {
-                    code: 100,
-                    status: "Error in connection to database",
-                    tags: ["db", "connection"]
-                });
-            }
-            return;
-        }
+function emit_remove_markers_message(sessionID){
+    if(typeof clients[sessionID] !== 'undefined')
+        clients[sessionID].emit("removeMarkers");
+}
 
-        var result = [];
-
-        var finalRows = [];
-        for (i = 0; i < queries.length; i++) {
-            connection.query(queries[i], function(err, rows) {
-                if (!err) {
-                    if (typeof clients[ses] != 'undefined') {
-                        if (i == 0) {
-                            clients[ses].emit("removeMarkers");
-                            console.log("Client " + ses + " was asked to remove all markers.");
-                        }
-                        if (!clients[ses].canQuery) {
-                            console.log("Client " + ses + " is unable to query, terminating queries...");
-                            i = queries.length;
-                            clients[ses].canQuery = true;
-                            //return;
-                        } else {
-                            console.log("Client " + ses + " has received " + rows.length + " rows from database.");
-                            var filteredRows = filterRows(rows, zoom);
-                            var isLast = (i == queries.length) ? true : false;
-                            clients[ses].emit("getCluster", filteredRows, isLast);
-                        }
-                        if (i + 1 == queries.length) {
-                            console.log("Client " + ses + " was asked to merge all clusters.");
-                            clients[ses].emit("mergeFakeClusters", "");
-                        }
-                    }
-                } else {
-                    if (typeof clients[ses] != 'undefined') {
-                        console.log("Client " + ses + " had an error performing database query (code 400).");
-                        clients[ses].emit("serverError", {
-                            code: 400,
-                            status: "Error performing query",
-                            tags: ["db", "query"]
-                        });
-                    }
-                }
-            });
-        }
-
-        var resultJSON = JSON.stringify(result);
-
-        connection.release();
-        connection.on('error', function(err) {
-            if (typeof clients[ses] != 'undefined') {
-                console.log("Client " + ses + " had an error connecting to database (code 100).");
-                clients[ses].emit("serverError", {
-                    code: 100,
-                    status: "Error in connection to database",
-                    tags: ["db", "connection"]
-                });
-            }
-            return;
+function handle_errors(sessionID, errorTag) {
+    if(typeof clients[sessionID] !== 'undefined') {
+        var errorText = "Client "+clients[sessionID]+" had an error ";
+        errorText += getErrorString(errorTag)+".";
+        clients[sessionID].emit(socketTags.serverError, {
+            status: errorText
         });
+        console.log(errorText);
+    }
+}
+
+
+
+
+// Query building
+function getCount(sessionID, bounds) {
+    var sqlQuery = squel.select()
+        .field("COUNT(*)", "count")
+        .from("libraries")
+        .where("lat > "+bounds.latA)
+        .where("lat < "+bounds.latB)
+        .where("lng > "+bounds.lngA)
+        .where("lng < "+bounds.lngB)
+        .toString();
+
+    handle_database(sessionID, sqlQuery, socketTags.countLibraries);
+}
+
+function getLibs(sessionID, bounds) {
+    var sqlQuery = squel.select()
+        .field("name")
+        .field("address")
+        .field("lat")
+        .field("lng")
+        .from("libraries")
+        .where("lat > "+bounds.latA)
+        .where("lat < "+bounds.latB)
+        .where("lng > "+bounds.lngA)
+        .where("lng < "+bounds.lngB)
+        .toString();
+
+    handle_database(sessionID, sqlQuery, socketTags.getLibraries);
+}
+
+function getClusters(sessionID, bounds, zoomLevel) {
+    emit_remove_markers_message();
+    var grids = divideBoundsIntoGrids(bounds);
+    grids.forEach(function(grid){
+        var sqlQuery = constructClusterGridSqlQuery(grid);
+        handle_database(sessionID, sqlQuery, socketTags.getCluster);
     });
+}
+
+
+
+
+
+// Handle socket listeners
+io.on('connection', function(socket) {
+    console.info("New client connected (id=" + socket.id + ").");
+    clients[socket.id] = socket;
+    clients[socket.id].canQuery = true;
+
+    clients[socket.id].on('getCount', function(bounds) {
+        getCount(socket.id, validateBoundsValues(bounds));
+    });
+    clients[socket.id].on('getLibraries', function(bounds) {
+        getLibs(socket.id, validateBoundsValues(bounds));
+    });
+    clients[socket.id].on('getClusters', function(bounds) {
+        var validatedBounds = validateBoundsValues(bounds);
+        validatedBounds.gridsize = bounds.gridsize;
+        var zoomLevel = bounds.zoom;
+        getClusters(socket.id, validatedBounds, zoomLevel);
+    });
+    clients[socket.id].on('stopEverything', function() {
+        if (typeof clients[socket.id] !== 'undefined') {
+            clients[socket.id].canQuery = false;
+            clients[socket.id].emit('removeMarkers');
+        }
+    });
+    clients[socket.id].on('disconnect', function() {
+        var index = clients[socket.id];
+        if (index !== -1) {
+            delete clients[socket.id];
+            console.info("Client gone (id=" + socket.id + ").");
+        }
+    });
+});
+
+
+
+
+
+// Utility functions
+function validateBoundsValues(bounds) {
+    var parsedBounds = parseBoundsValuesAsFloat(bounds);
+    var correctedBounds = correctMaxAndMinValues(parsedBounds);
+    return enlargeBoundsArea(correctedBounds);
+}
+
+function enlargeBoundsArea(bounds) {
+    var latDistance = (bounds.latB - bounds.latA) * 0.3;
+    var lngDistance = (bounds.lngB - bounds.lngA) * 0.3;
+    var result = {};
+    result.latA = bounds.latA - latDistance;
+    result.lngA = bounds.lngA - lngDistance;
+    result.latB = bounds.latB + latDistance;
+    result.lngB = bounds.lngB + lngDistance;
+    return result;
+}
+
+function correctMaxAndMinValues(bounds) {
+    var result = {};
+    result.latA = Math.min(bounds.latA, bounds.latB);
+    result.lngA = Math.min(bounds.lngA, bounds.lngB);
+    result.latB = Math.max(bounds.latA, bounds.latB);
+    result.lngB = Math.max(bounds.lngA, bounds.lngB);
+    return result;
+}
+
+function parseBoundsValuesAsFloat(bounds) {
+    var results = {};
+    results.latA = parseFloat(bounds.latA);
+    results.latB = parseFloat(bounds.latB);
+    results.lngA = parseFloat(bounds.lngA);
+    results.lngB = parseFloat(bounds.lngB);
+    return results;
+}
+
+function divideBoundsIntoGrids(bounds) {
+    var latGridDistance = (bounds.latB - bounds.latA) / bounds.gridsize;
+    var lngGridDistance = (bounds.lngB - bounds.lngA) / bounds.gridsize;
+
+    var grids = [];
+
+    for(i = 0; i < bounds.gridsize; i++) {
+        for(n = 0; n < bounds.gridsize; n++) {
+            var grid = {};
+            grid.latA = bounds.latA + (latGridDistance * i);
+            grid.lngA = bounds.lngA + (lngGridDistance * n);
+            grid.latB = grid.latA + latGridDistance;
+            grid.lngB = grid.lngA + lngGridDistance;
+            grids.push(grid);
+        }
+    }
+
+    return grids;
+}
+
+function constructClusterGridSqlQuery(grid) {
+    return squel.select()
+            .field("AVG(lat)","lat")
+            .field("AVG(lng)","lng")
+            .field("COUNT(*)","count")
+            .field("country")
+            .field("MIN(lat)","startLat")
+            .field("MIN(lng)","startLng")
+            .field("MAX(lat)","endLat")
+            .field("MAX(lng)","endLng")
+            .from("libraries")
+            .where("lat > "+grid.latA)
+            .where("lat < "+grid.latB)
+            .where("lng > "+grid.lngA)
+            .where("lng < "+grid.lngB)
+            .group("country")
+            .toString();
+}
+
+function getErrorString(errorTag) {
+    switch(errorTag) {
+        case errors.db.connection:
+            return "connecting to the database (code 100)";
+            break;
+        case errors.db.query:
+            return "performing an SQL query (code 400)";
+            break;
+        default:
+            return "of an unknown nature";
+            break;
+    }
 }
 
 function filterRows(rows, zoom) {
-    var retRows = [];
-    var z = zoom;
-    if (z == 0) z = 0.1;
-    var mergeDistance = -1.082 * z + 6.414;
+    var result = [];
+    const zoomMultiplicator = -1.082;
+    const mergeDistanceCorrection = 6.414;
+    if(zoom === 0) zoom = 0.1;
+
+    var mergeDistance = zoomMultiplicator * zoom + mergeDistanceCorrection;
+    rows = mergeCloseMarkers(rows, mergeDistance);
+
+    // Push non-empty markers to array, also remove markers with low count
+    for (i = 0; i < rows.length; i++) {
+        if (rows[i]["lat"] != null && rows[i]["count"] > 4) {
+            result.push(rows[i]);
+        }
+    }
+    return result;
+}
+
+function mergeCloseMarkers(rows, mergeDistance) {
     for (i = 0; i < rows.length; i++) {
         for (n = i + 1; n < rows.length; n++) {
-            var latOne = rows[i]["lat"];
-            var lngOne = rows[i]["lng"];
-            var countOne = rows[i]["count"];
-            var countryOne = rows[i]["country"];
-            var latTwo = rows[n]["lat"];
-            var lngTwo = rows[n]["lng"];
-            var countTwo = rows[n]["count"];
-            var countryTwo = rows[n]["country"];
-
-            var markerDist = (Math.abs(latOne - latTwo) + Math.abs(lngOne - lngTwo)) / 2;
-
-            if (markerDist < mergeDistance) {
-                var newLat = (latOne + latTwo) / 2;
-                var newLng = (lngOne + lngTwo) / 2;
-                var newCount = countOne + countTwo;
+            var distanceData = constructDistanceData(rows[i], rows[n]);
+            if (distanceData.markerDist < mergeDistance) {
+                var newLat = (distanceData.latOne + distanceData.latTwo) / 2;
+                var newLng = (distanceData.lngOne + distanceData.lngTwo) / 2;
+                var newCount = distanceData.countOne + distanceData.countTwo;
                 rows[n]["lat"] = newLat;
                 rows[n]["lng"] = newLng;
                 rows[n]["count"] = newCount;
@@ -184,143 +303,20 @@ function filterRows(rows, zoom) {
             }
         }
     }
-    // Push non-empty markers to array, also remove markers with low count
-    for (i = 0; i < rows.length; i++) {
-        if (rows[i]["lat"] != null && rows[i]["count"] > 4) {
-            retRows.push(rows[i]);
-        }
-    }
-    return retRows;
+    return rows;
 }
 
-function test_function(req, res, msg) {
-    console.log("Test: " + msg);
-}
-
-function getCount(ses, bounds) {
-    var b = bounds;
-    var startLat = b.latA;
-    var startLng = b.lngA;
-    var endLat = b.latB;
-    var endLng = b.lngB;
-
-    var sql = "SELECT COUNT(*) AS count FROM libraries";
-    sql += " WHERE lat > " + startLat;
-    sql += " AND lat < " + endLat;
-    sql += " AND lng > " + startLng;
-    sql += " AND lng < " + endLng;
-
-    handle_database(ses, sql, "countLibraries");
-}
-
-function getLibs(ses, bounds) {
-    var b = bounds;
-    var startLat = b.latA;
-    var startLng = b.lngA;
-    var endLat = b.latB;
-    var endLng = b.lngB;
-
-    var sql = "SELECT name,address,lat,lng FROM libraries";
-    sql += " WHERE lat > " + startLat;
-    sql += " AND lat < " + endLat;
-    sql += " AND lng > " + startLng;
-    sql += " AND lng < " + endLng;
-
-    handle_database(ses, sql, "getLibraries");
-}
-
-function getClusters(ses, bounds, zoom) {
-    var b = bounds;
-    var startLat = b.latA;
-    var startLng = b.lngA;
-    var endLat = b.latB;
-    var endLng = b.lngB;
-    var gridsize = b.gridsize;
-
-    var queries = [];
-
-    for (i = 0; i < gridsize; i++) {
-        for (n = 0; n < gridsize; n++) {
-            var latDist = endLat - startLat;
-            var lngDist = endLng - startLng;
-            var latGridDist = latDist / gridsize;
-            var lngGridDist = lngDist / gridsize;
-            var latA = startLat + (i * latGridDist);
-            var latB = latA + latGridDist;
-            var lngA = startLng + (n * lngGridDist);
-            var lngB = lngA + lngGridDist;
-
-            var whereGroup = " WHERE lat > " + latA;
-            whereGroup += " AND lat < " + latB;
-            whereGroup += " AND lng > " + lngA;
-            whereGroup += " AND lng < " + lngB;
-
-            var sql = "SELECT AVG(lat) as lat, AVG(lng) as lng, COUNT(*) as count, country, MIN(lat) AS startLat, MIN(lng) AS startLng, MAX(lat) AS endLat, MAX(lng) AS endLng";
-            sql += " FROM libraries";
-            sql += whereGroup;
-            sql += " GROUP BY country";
-            queries.push(sql);
-        }
-    }
-    handle_database_multi(ses, queries, zoom);
-}
-
-io.on('connection', function(socket) {
-    console.info("New client connected (id=" + socket.id + ").");
-    clients[socket.id] = socket;
-    clients[socket.id].canQuery = true;
-    //clients[socket.id].emit("SessionID", socket.id, socket.id);
-
-    clients[socket.id].on('getCount', function(bounds) {
-        var b = correctBounds(bounds);
-        getCount(socket.id, b);
-    });
-    clients[socket.id].on('getLibraries', function(bounds) {
-        var b = correctBounds(bounds);
-        getLibs(socket.id, b);
-    });
-    clients[socket.id].on('getClusters', function(bounds) {
-        //console.log("\n\nOptions: \n"+JSON.stringify(bounds)+"\n"+JSON.stringify(zoom));
-        var b = correctBounds(bounds);
-        b.gridsize = bounds.gridsize;
-        var zoom = bounds.zoom;
-        getClusters(socket.id, b, zoom);
-    });
-    clients[socket.id].on('stopEverything', function() {
-        if (typeof clients[socket.id] != 'undefined') {
-            clients[socket.id].canQuery = false;
-            clients[socket.id].emit('removeMarkers');
-        }
-    });
-    clients[socket.id].on('disconnect', function() {
-        var index = clients[socket.id];
-        if (index != -1) {
-            delete clients[socket.id];
-            console.info("Client gone (id=" + socket.id + ").");
-        }
-    });
-});
-
-function correctBounds(bounds) {
-    var retBounds = {};
-    var b = bounds;
-
-    // Firstly, parse all bounds as float
-    b.latA = parseFloat(b.latA);
-    b.latB = parseFloat(b.latB);
-    b.lngA = parseFloat(b.lngA);
-    b.lngB = parseFloat(b.lngB);
-
-    // Check if latA has the lowest value, swap the lats if not
-    retBounds.latA = Math.min(b.latA, b.latB);
-    retBounds.lngA = Math.min(b.lngA, b.lngB);
-    retBounds.latB = Math.max(b.latA, b.latB);
-    retBounds.lngB = Math.max(b.lngA, b.lngB);
-    var latDist = retBounds.latB - retBounds.latA;
-    var lngDist = retBounds.lngB - retBounds.lngA;
-    retBounds.latA -= (latDist * 0.3);
-    retBounds.lngA -= (lngDist * 0.3);
-    retBounds.latB += (latDist * 0.3);
-    retBounds.lngB += (lngDist * 0.3);
-    return retBounds;
+function constructDistanceData(rowA, rowB) {
+    var result = {
+        latOne: rowA["lat"],
+        lngOne: rowA["lng"],
+        countOne: rowA["count"],
+        countryOne: rowA["country"],
+        latTwo: rowB["lat"],
+        lngTwo: rowB["lng"],
+        countTwo: rowB["count"],
+        countryTwo: rowB["country"]
+    };
+    result.markerDist = (Math.abs(result.latOne - result.latTwo) + Math.abs(result.lngOne - result.lngTwo)) / 2;
+    return result;
 }
