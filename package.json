@@ -4,8 +4,8 @@
     "port": "8080"
   },
   "engines": {
-    "node": "==7.7.3",
-    "npm": "==4.5.0"
+    "node": "7.7.3",
+    "npm": "4.5.0"
   },
   "version": "0.0.1",
   "dependencies": {
