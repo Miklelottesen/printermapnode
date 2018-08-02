@@ -714,7 +714,8 @@ function makePrinchInfoWindow(place, marker) {
         txt: "Besøg hjemmeside"
     }]);
     html += handleOpeningHours(place['opening_hours']);
-    html += handlePhotos(place['photos']);
+    if (place['photos'])
+        html += handlePhotos(place['photos']);
 
     infowindow = new google.maps.InfoWindow({
         content: html
